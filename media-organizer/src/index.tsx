@@ -1,3 +1,7 @@
+/**
+ * @file This is the main entry point for the Media Hub React application.
+ * It handles the rendering of the root `App` component into the DOM.
+ */
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
