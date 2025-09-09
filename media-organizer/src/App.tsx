@@ -880,9 +880,26 @@ function MetadataEditor({ item, onSave, onClose }: MetadataEditorProps) {
   const [newAuthor, setNewAuthor] = useState('');
   const [newTag, setNewTag] = useState('');
   const [coverPreview, setCoverPreview] = useState(item.coverImage || '');
+  
+  // Tab and validation state
+  const [activeTab, setActiveTab] = useState<'basic' | 'media' | 'organization'>('basic');
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [touchedFields, setTouchedFields] = useState<Set<string>>(new Set());
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate all fields before saving
+    const errors = validateForm(formData, item.mediaType);
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
+      // Switch to the tab with the first error
+      if (errors.title || errors.year || errors.summary) setActiveTab('basic');
+      else if (errors.artist || errors.director || errors.season) setActiveTab('media');
+      else setActiveTab('organization');
+      return;
+    }
+    
     onSave({...formData, coverImage: coverPreview});
   };
 
@@ -897,6 +914,71 @@ function MetadataEditor({ item, onSave, onClose }: MetadataEditorProps) {
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  // Validation function
+  const validateForm = (data: Partial<MediaItem>, mediaType: string): Record<string, string> => {
+    const errors: Record<string, string> = {};
+    
+    if (!data.title?.trim()) {
+      errors.title = 'Title is required';
+    }
+    
+    if (data.year && (data.year < 1000 || data.year > new Date().getFullYear() + 10)) {
+      errors.year = 'Please enter a valid year';
+    }
+    
+    if (mediaType === 'book' && data.authors && data.authors.length === 0) {
+      errors.authors = 'At least one author is recommended for books';
+    }
+    
+    if (mediaType === 'music' && !data.artist?.trim()) {
+      errors.artist = 'Artist is recommended for music';
+    }
+    
+    if ((mediaType === 'movie' || mediaType === 'tv') && !data.director?.trim()) {
+      errors.director = 'Director is recommended for videos';
+    }
+    
+    return errors;
+  };
+
+  // Handle field changes with validation
+  const handleFieldChange = (field: string, value: any) => {
+    setFormData({ ...formData, [field]: value });
+    setTouchedFields(prev => {
+      const newSet = new Set(prev);
+      newSet.add(field);
+      return newSet;
+    });
+    
+    // Clear validation error when field is corrected
+    if (validationErrors[field]) {
+      const newErrors = { ...validationErrors };
+      delete newErrors[field];
+      setValidationErrors(newErrors);
+    }
+  };
+
+  // Calculate completion percentage
+  const calculateCompletion = (): number => {
+    const requiredFields = ['title', 'summary'];
+    const mediaSpecificFields = {
+      book: ['authors', 'publisher'],
+      music: ['artist', 'album'],
+      movie: ['director', 'year'],
+      tv: ['director', 'season', 'episode'],
+      comic: ['authors', 'series'],
+      pdf: ['title', 'summary']
+    };
+    
+    const allFields = [...requiredFields, ...(mediaSpecificFields[item.mediaType as keyof typeof mediaSpecificFields] || [])];
+    const completed = allFields.filter(field => {
+      const value = formData[field as keyof MediaItem];
+      return value && (Array.isArray(value) ? value.length > 0 : String(value).trim() !== '');
+    }).length;
+    
+    return Math.round((completed / allFields.length) * 100);
   };
 
   const addAuthor = () => {
@@ -933,249 +1015,331 @@ function MetadataEditor({ item, onSave, onClose }: MetadataEditorProps) {
     }));
   };
 
+  // Floating Input Component
+  const FloatingInput = ({ label, field, type = "text", required = false, multiline = false }: {
+    label: string;
+    field: string;
+    type?: string;
+    required?: boolean;
+    multiline?: boolean;
+  }) => {
+    const value = formData[field as keyof MediaItem] || '';
+    const hasError = validationErrors[field];
+    
+    return (
+      <div className={`floating-input-group ${hasError ? 'error' : ''} ${value ? 'filled' : ''}`}>
+        {multiline ? (
+          <textarea
+            value={String(value)}
+            onChange={(e) => handleFieldChange(field, e.target.value)}
+            className="floating-input"
+            placeholder=" "
+            rows={4}
+          />
+        ) : (
+          <input
+            type={type}
+            value={String(value)}
+            onChange={(e) => handleFieldChange(field, type === 'number' ? parseInt(e.target.value) || undefined : e.target.value)}
+            className="floating-input"
+            placeholder=" "
+          />
+        )}
+        <label className="floating-label">
+          {label} {required && <span className="required-star">*</span>}
+        </label>
+        {hasError && <span className="error-message">{hasError}</span>}
+      </div>
+    );
+  };
+
   return (
-    <div className="metadata-editor-modal">
+    <div className="metadata-editor-modal modern">
       <div className="modal-backdrop" onClick={onClose} />
       <div className="modal-content">
         <div className="modal-header">
-          <h2>Edit Metadata - {getMediaTypeDisplayName(item.mediaType)}</h2>
+          <div className="header-info">
+            <h2>Edit Metadata - {getMediaTypeDisplayName(item.mediaType)}</h2>
+            <div className="completion-indicator">
+              <div className="completion-bar">
+                <div 
+                  className="completion-progress" 
+                  style={{ width: `${calculateCompletion()}%` }}
+                ></div>
+              </div>
+              <span className="completion-text">{calculateCompletion()}% Complete</span>
+            </div>
+          </div>
           <button onClick={onClose} className="close-btn">
             ✕
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="metadata-form">
-          {/* Cover Image Section */}
-          <div className="form-group">
-            <label>Cover Image</label>
-            <div className="cover-upload-section">
-              <div className="cover-preview">
-                {coverPreview ? (
-                  <img src={coverPreview} alt="Cover preview" className="cover-preview-image" />
-                ) : (
-                  <div className="cover-placeholder">
-                    <span className="cover-icon">{getMediaIcon(item.mediaType)}</span>
-                    <p>No cover image</p>
+
+        {/* Tab Navigation */}
+        <div className="tab-navigation">
+          <button
+            type="button"
+            className={`tab-btn ${activeTab === 'basic' ? 'active' : ''}`}
+            onClick={() => setActiveTab('basic')}
+          >
+            <span className="tab-icon">📝</span>
+            Basic Info
+            {(validationErrors.title || validationErrors.year || validationErrors.summary) && 
+              <span className="error-indicator">!</span>}
+          </button>
+          <button
+            type="button"
+            className={`tab-btn ${activeTab === 'media' ? 'active' : ''}`}
+            onClick={() => setActiveTab('media')}
+          >
+            <span className="tab-icon">{getMediaIcon(item.mediaType)}</span>
+            Media Details
+            {(validationErrors.artist || validationErrors.director || validationErrors.season) && 
+              <span className="error-indicator">!</span>}
+          </button>
+          <button
+            type="button"
+            className={`tab-btn ${activeTab === 'organization' ? 'active' : ''}`}
+            onClick={() => setActiveTab('organization')}
+          >
+            <span className="tab-icon">🏷️</span>
+            Organization
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="metadata-form tabbed">
+          {/* Basic Info Tab */}
+          {activeTab === 'basic' && (
+            <div className="tab-content">
+              <div className="tab-section">
+                <h3 className="section-title">Cover Image</h3>
+                <div className="cover-upload-section">
+                  <div className="cover-preview">
+                    {coverPreview ? (
+                      <img src={coverPreview} alt="Cover preview" className="cover-preview-image" />
+                    ) : (
+                      <div className="cover-placeholder">
+                        <span className="cover-icon">{getMediaIcon(item.mediaType)}</span>
+                        <p>No cover image</p>
+                      </div>
+                    )}
                   </div>
-                )}
+                  <div className="cover-upload-controls">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleCoverImageUpload}
+                      className="cover-file-input"
+                      id="cover-upload"
+                    />
+                    <label htmlFor="cover-upload" className="cover-upload-btn">
+                      Choose Image
+                    </label>
+                    <input
+                      type="url"
+                      placeholder="Or enter image URL..."
+                      value={formData.coverImage || ''}
+                      onChange={(e) => {
+                        handleFieldChange('coverImage', e.target.value);
+                        setCoverPreview(e.target.value);
+                      }}
+                      className="cover-url-input"
+                    />
+                    {coverPreview && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCoverPreview('');
+                          handleFieldChange('coverImage', '');
+                        }}
+                        className="remove-cover-btn"
+                      >
+                        Remove Cover
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="cover-upload-controls">
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleCoverImageUpload}
-                  className="cover-file-input"
-                  id="cover-upload"
-                />
-                <label htmlFor="cover-upload" className="cover-upload-btn">
-                  Choose Image
-                </label>
-                <input
-                  type="url"
-                  placeholder="Or enter image URL..."
-                  value={formData.coverImage || ''}
-                  onChange={(e) => {
-                    setFormData({...formData, coverImage: e.target.value});
-                    setCoverPreview(e.target.value);
-                  }}
-                  className="cover-url-input"
-                />
-                {coverPreview && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCoverPreview('');
-                      setFormData({...formData, coverImage: ''});
-                    }}
-                    className="remove-cover-btn"
-                  >
-                    Remove Cover
-                  </button>
-                )}
+
+              <div className="tab-section">
+                <h3 className="section-title">Basic Information</h3>
+                <div className="form-grid">
+                  <FloatingInput label="Title" field="title" required />
+                  <FloatingInput label="Sort Title" field="sortTitle" />
+                  <FloatingInput label="Year" field="year" type="number" />
+                </div>
+                <FloatingInput label="Summary" field="summary" multiline />
+                
+                <div className="form-group">
+                  <label className="section-label">Rating</label>
+                  <div className="star-rating">
+                    {[1, 2, 3, 4, 5].map(star => (
+                      <button
+                        key={star}
+                        type="button"
+                        className={star <= (formData.rating || 0) ? 'active' : ''}
+                        onClick={() => handleFieldChange('rating', star === formData.rating ? 0 : star)}
+                      >
+                        ★
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-
-          <div className="form-group">
-            <label>Title</label>
-            <input
-              type="text"
-              value={formData.title || ''}
-              onChange={(e) => setFormData({...formData, title: e.target.value})}
-            />
-          </div>
-
-          {/* Music-specific fields */}
-          {item.mediaType === 'music' && (
-            <>
-              <div className="form-group">
-                <label>Artist</label>
-                <input
-                  type="text"
-                  value={formData.artist || ''}
-                  onChange={(e) => setFormData({...formData, artist: e.target.value})}
-                />
-              </div>
-              <div className="form-group">
-                <label>Album</label>
-                <input
-                  type="text"
-                  value={formData.album || ''}
-                  onChange={(e) => setFormData({...formData, album: e.target.value})}
-                />
-              </div>
-            </>
           )}
 
-          {/* Video-specific fields */}
-          {(item.mediaType === 'movie' || item.mediaType === 'tv') && (
-            <>
-              <div className="form-group">
-                <label>Director</label>
-                <input
-                  type="text"
-                  value={formData.director || ''}
-                  onChange={(e) => setFormData({...formData, director: e.target.value})}
-                />
-              </div>
-              {item.mediaType === 'tv' && (
-                <>
+          {/* Media Details Tab */}
+          {activeTab === 'media' && (
+            <div className="tab-content">
+              {/* Music-specific fields */}
+              {item.mediaType === 'music' && (
+                <div className="tab-section">
+                  <h3 className="section-title">Music Information</h3>
+                  <div className="form-grid">
+                    <FloatingInput label="Artist" field="artist" required />
+                    <FloatingInput label="Album Artist" field="albumArtist" />
+                    <FloatingInput label="Album" field="album" />
+                    <FloatingInput label="Track Number" field="trackNumber" type="number" />
+                    <FloatingInput label="Disc Number" field="discNumber" type="number" />
+                  </div>
+                </div>
+              )}
+
+              {/* Video-specific fields */}
+              {(item.mediaType === 'movie' || item.mediaType === 'tv') && (
+                <div className="tab-section">
+                  <h3 className="section-title">Video Information</h3>
+                  <div className="form-grid">
+                    <FloatingInput label="Director" field="director" />
+                    <FloatingInput label="Runtime (minutes)" field="runtime" type="number" />
+                  </div>
+                  {item.mediaType === 'tv' && (
+                    <>
+                      <FloatingInput label="Show Title" field="showTitle" />
+                      <div className="form-grid">
+                        <FloatingInput label="Season" field="season" type="number" />
+                        <FloatingInput label="Episode" field="episode" type="number" />
+                      </div>
+                    </>
+                  )}
                   <div className="form-group">
-                    <label>Show Title</label>
-                    <input
-                      type="text"
-                      value={formData.showTitle || ''}
-                      onChange={(e) => setFormData({...formData, showTitle: e.target.value})}
+                    <label className="section-label">Cast</label>
+                    <textarea
+                      value={(formData.cast || []).join(', ')}
+                      onChange={(e) => handleFieldChange('cast', e.target.value.split(',').map(c => c.trim()).filter(c => c))}
+                      placeholder="Enter cast members, separated by commas..."
+                      rows={3}
+                      className="floating-input"
                     />
                   </div>
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label>Season</label>
-                      <input
-                        type="number"
-                        value={formData.season || ''}
-                        onChange={(e) => setFormData({...formData, season: parseInt(e.target.value) || undefined})}
-                      />
+                </div>
+              )}
+
+              {/* Book-specific fields */}
+              {(item.mediaType === 'book' || item.mediaType === 'comic') && (
+                <div className="tab-section">
+                  <h3 className="section-title">Publication Information</h3>
+                  <div className="form-grid">
+                    <FloatingInput label="Publisher" field="publisher" />
+                    <FloatingInput label="ISBN" field="isbn" />
+                    <FloatingInput label="Page Count" field="pageCount" type="number" />
+                    <FloatingInput label="Series" field="series" />
+                    <FloatingInput label="Series Index" field="seriesIndex" type="number" />
+                  </div>
+                  
+                  <div className="form-group">
+                    <label className="section-label">Authors</label>
+                    <div className="authors-list">
+                      {(formData.authors || []).map((author, index) => (
+                        <div key={index} className="author-chip">
+                          {author}
+                          <button type="button" onClick={() => removeAuthor(index)}>×</button>
+                        </div>
+                      ))}
                     </div>
-                    <div className="form-group">
-                      <label>Episode</label>
+                    <div className="add-author">
                       <input
-                        type="number"
-                        value={formData.episode || ''}
-                        onChange={(e) => setFormData({...formData, episode: parseInt(e.target.value) || undefined})}
+                        type="text"
+                        value={newAuthor}
+                        onChange={(e) => setNewAuthor(e.target.value)}
+                        placeholder="Add author..."
+                        onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addAuthor())}
+                        className="floating-input"
                       />
+                      <button type="button" onClick={addAuthor} className="add-btn">Add</button>
                     </div>
                   </div>
-                </>
+                </div>
               )}
-            </>
+            </div>
           )}
 
-          {/* Book-specific fields */}
-          {item.mediaType === 'book' && (
-            <>
-              <div className="form-group">
-                <label>Authors</label>
-                <div className="authors-list">
-                  {(formData.authors || []).map((author, index) => (
-                    <div key={index} className="author-chip">
-                      {author}
-                      <button type="button" onClick={() => removeAuthor(index)}>×</button>
-                    </div>
-                  ))}
+          {/* Organization Tab */}
+          {activeTab === 'organization' && (
+            <div className="tab-content">
+              <div className="tab-section">
+                <h3 className="section-title">Tags & Labels</h3>
+                <div className="form-group">
+                  <label className="section-label">Tags</label>
+                  <div className="tags-list">
+                    {(formData.tags || []).map((tag, index) => (
+                      <div key={index} className="tag-chip">
+                        {tag}
+                        <button type="button" onClick={() => removeTag(index)}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="add-tag">
+                    <input
+                      type="text"
+                      value={newTag}
+                      onChange={(e) => setNewTag(e.target.value)}
+                      placeholder="Add tag..."
+                      onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
+                      className="floating-input"
+                    />
+                    <button type="button" onClick={addTag} className="add-btn">Add</button>
+                  </div>
                 </div>
-                <div className="add-author">
-                  <input
-                    type="text"
-                    value={newAuthor}
-                    onChange={(e) => setNewAuthor(e.target.value)}
-                    placeholder="Add author..."
-                    onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addAuthor())}
-                  />
-                  <button type="button" onClick={addAuthor}>Add</button>
+
+                <div className="form-group">
+                  <label className="section-label">Genres</label>
+                  <div className="genres-list">
+                    {(formData.genres || []).map((genre, index) => (
+                      <div key={index} className="genre-chip">
+                        {genre}
+                        <button type="button" onClick={() => {
+                          const newGenres = [...(formData.genres || [])];
+                          newGenres.splice(index, 1);
+                          handleFieldChange('genres', newGenres);
+                        }}>×</button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
-              <div className="form-group">
-                <label>Publisher</label>
-                <input
-                  type="text"
-                  value={formData.publisher || ''}
-                  onChange={(e) => setFormData({...formData, publisher: e.target.value})}
-                />
+
+              <div className="tab-section">
+                <h3 className="section-title">Collection Status</h3>
+                <div className="form-group">
+                  <label className="section-label">Watch/Read Status</label>
+                  <div className="status-options">
+                    {['unwatched', 'partial', 'watched'].map(status => (
+                      <button
+                        key={status}
+                        type="button"
+                        className={`status-btn ${formData.watchedStatus === status ? 'active' : ''}`}
+                        onClick={() => handleFieldChange('watchedStatus', status)}
+                      >
+                        {status.charAt(0).toUpperCase() + status.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
-              <div className="form-group">
-                <label>Series</label>
-                <input
-                  type="text"
-                  value={formData.series || ''}
-                  onChange={(e) => setFormData({...formData, series: e.target.value})}
-                />
-              </div>
-              <div className="form-group">
-                <label>Series Index</label>
-                <input
-                  type="number"
-                  value={formData.seriesIndex || ''}
-                  onChange={(e) => setFormData({...formData, seriesIndex: parseInt(e.target.value) || undefined})}
-                />
-              </div>
-            </>
+            </div>
           )}
-
-          <div className="form-group">
-            <label>Year</label>
-            <input
-              type="number"
-              value={formData.year || ''}
-              onChange={(e) => setFormData({...formData, year: parseInt(e.target.value) || undefined})}
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Summary</label>
-            <textarea
-              value={formData.summary || ''}
-              onChange={(e) => setFormData({...formData, summary: e.target.value})}
-              rows={4}
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Rating</label>
-            <div className="star-rating">
-              {[1, 2, 3, 4, 5].map(star => (
-                <button
-                  key={star}
-                  type="button"
-                  className={star <= (formData.rating || 0) ? 'active' : ''}
-                  onClick={() => setFormData({...formData, rating: star === formData.rating ? 0 : star})}
-                >
-                  ★
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label>Tags</label>
-            <div className="tags-list">
-              {(formData.tags || []).map((tag, index) => (
-                <div key={index} className="tag-chip">
-                  {tag}
-                  <button type="button" onClick={() => removeTag(index)}>×</button>
-                </div>
-              ))}
-            </div>
-            <div className="add-tag">
-              <input
-                type="text"
-                value={newTag}
-                onChange={(e) => setNewTag(e.target.value)}
-                placeholder="Add tag..."
-                onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
-              />
-              <button type="button" onClick={addTag}>Add</button>
-            </div>
-          </div>
 
           <div className="form-actions">
             <button type="button" onClick={onClose} className="cancel-btn">Cancel</button>
