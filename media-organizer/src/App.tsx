@@ -336,17 +336,34 @@ function App() {
         </div>
         <div className="media-row">
           {items.map(item => (
-            <div key={item.id} className="media-card-compact" onClick={() => {
-              setSelectedItem(item);
-              setShowViewer(true);
-            }}>
-              <div className="media-poster">
-                <div className="media-icon-large">
-                  {getMediaIcon(item.mediaType)}
-                </div>
+            <div key={item.id} className="media-card-compact">
+              <div className="media-poster" onClick={() => {
+                setSelectedItem(item);
+                setShowViewer(true);
+              }}>
+                {item.coverImage ? (
+                  <img 
+                    src={item.coverImage} 
+                    alt={item.title || item.name}
+                    className="cover-image"
+                  />
+                ) : (
+                  <div className="media-icon-large">
+                    {getMediaIcon(item.mediaType)}
+                  </div>
+                )}
                 {item.watchedStatus === 'partial' && (
                   <div className="progress-indicator">▶</div>
                 )}
+                <div className="media-overlay-compact">
+                  <button className="edit-icon-btn" onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedItem(item);
+                    setShowEditor(true);
+                  }}>
+                    ✏️
+                  </button>
+                </div>
               </div>
               <div className="media-info-compact">
                 <h4>{item.title || item.name}</h4>
@@ -670,16 +687,30 @@ function MediaCard({ item, onEdit, onView, onRemove }: MediaCardProps) {
   return (
     <div className="media-card-detailed">
       <div className="media-poster-large">
-        <div className="media-icon-xl">
-          {getMediaIcon(item.mediaType)}
-        </div>
+        {item.coverImage ? (
+          <img 
+            src={item.coverImage} 
+            alt={item.title || item.name}
+            className="cover-image-large"
+          />
+        ) : (
+          <div className="media-icon-xl">
+            {getMediaIcon(item.mediaType)}
+          </div>
+        )}
         <div className="media-overlay">
           <button onClick={onView} className="play-btn">▶</button>
+          <button onClick={onEdit} className="edit-btn">✏️</button>
         </div>
       </div>
       
       <div className="media-details">
-        <h3>{displayInfo.primary}</h3>
+        <div className="title-with-edit">
+          <h3>{displayInfo.primary}</h3>
+          <button onClick={onEdit} className="inline-edit-btn" title="Edit metadata">
+            ✏️
+          </button>
+        </div>
         {displayInfo.secondary && <p className="media-secondary">{displayInfo.secondary}</p>}
         {displayInfo.tertiary && <p className="media-tertiary">{displayInfo.tertiary}</p>}
         
@@ -842,15 +873,30 @@ function MetadataEditor({ item, onSave, onClose }: MetadataEditorProps) {
     rating: item.rating || 0,
     season: item.season || undefined,
     episode: item.episode || undefined,
-    showTitle: item.showTitle || ''
+    showTitle: item.showTitle || '',
+    coverImage: item.coverImage || ''
   });
 
   const [newAuthor, setNewAuthor] = useState('');
   const [newTag, setNewTag] = useState('');
+  const [coverPreview, setCoverPreview] = useState(item.coverImage || '');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(formData);
+    onSave({...formData, coverImage: coverPreview});
+  };
+
+  const handleCoverImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const result = event.target?.result as string;
+        setCoverPreview(result);
+        setFormData({...formData, coverImage: result});
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const addAuthor = () => {
@@ -898,6 +944,57 @@ function MetadataEditor({ item, onSave, onClose }: MetadataEditorProps) {
           </button>
         </div>
         <form onSubmit={handleSubmit} className="metadata-form">
+          {/* Cover Image Section */}
+          <div className="form-group">
+            <label>Cover Image</label>
+            <div className="cover-upload-section">
+              <div className="cover-preview">
+                {coverPreview ? (
+                  <img src={coverPreview} alt="Cover preview" className="cover-preview-image" />
+                ) : (
+                  <div className="cover-placeholder">
+                    <span className="cover-icon">{getMediaIcon(item.mediaType)}</span>
+                    <p>No cover image</p>
+                  </div>
+                )}
+              </div>
+              <div className="cover-upload-controls">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleCoverImageUpload}
+                  className="cover-file-input"
+                  id="cover-upload"
+                />
+                <label htmlFor="cover-upload" className="cover-upload-btn">
+                  Choose Image
+                </label>
+                <input
+                  type="url"
+                  placeholder="Or enter image URL..."
+                  value={formData.coverImage || ''}
+                  onChange={(e) => {
+                    setFormData({...formData, coverImage: e.target.value});
+                    setCoverPreview(e.target.value);
+                  }}
+                  className="cover-url-input"
+                />
+                {coverPreview && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCoverPreview('');
+                      setFormData({...formData, coverImage: ''});
+                    }}
+                    className="remove-cover-btn"
+                  >
+                    Remove Cover
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
           <div className="form-group">
             <label>Title</label>
             <input
