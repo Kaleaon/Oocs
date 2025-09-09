@@ -1,8 +1,24 @@
-# Media Organizer
+# Universal Media Library
 
 ## Overview
 
-Media Organizer is a React-based web application designed to help users organize and manage their media files. The application provides functionality for uploading files via drag-and-drop or file selection, organizing content with tags and labels, searching through media collections, and sorting items by various criteria. The app uses browser localStorage for data persistence, making it a client-side solution for personal media organization.
+Universal Media Library is a comprehensive React-based web application designed to organize, manage, and view various types of media files including ebooks, comics, PDFs, audio, video, and image files. Inspired by Calibre's functionality, the application provides advanced media organization features, metadata management, and built-in viewers for different file formats. The app uses browser localStorage for data persistence and offers a responsive, mobile-friendly interface perfect for Android and web usage.
+
+## Recent Changes (September 2025)
+
+### Major Enhancement - Calibre-Inspired Media Management
+- **Multi-Format Support**: Added support for books (EPUB, MOBI), comics (CBZ, CBR), PDFs, audio, video, and image files
+- **Advanced Metadata System**: Comprehensive metadata management including title, authors, publisher, series, genres, ratings, and descriptions
+- **Built-in Viewers**: PDF viewer using react-pdf, image viewer, and foundation for ebook/comic readers
+- **Enhanced Organization**: Media type filtering, advanced search, and improved tagging system
+- **Metadata Editor**: Full-featured metadata editing interface with author management, series tracking, and rating system
+
+### User Interface Improvements
+- **Modern Design**: Complete UI overhaul with gradient headers, card-based layouts, and improved typography
+- **Responsive Layout**: Optimized for both desktop and mobile devices
+- **Media Type Icons**: Visual indicators for different file types using emoji icons
+- **Grid/List Views**: Toggle between grid and list display modes
+- **Advanced Filtering**: Filter by media type, tags, genres, and metadata
 
 ## User Preferences
 
@@ -11,34 +27,42 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 
 ### Frontend Architecture
-The application is built as a single-page React application using Create React App with TypeScript. The architecture follows a component-based structure with:
+The application is built as a single-page React application using Create React App with TypeScript. The enhanced architecture includes:
 
-- **Main App Component**: Centralized state management using React hooks (useState, useEffect)
-- **State Management**: Local component state for managing media items, filters, search terms, and sorting preferences
-- **Data Persistence**: Browser localStorage for saving and retrieving media items across sessions
-- **File Handling**: Native HTML5 File API for drag-and-drop and file upload functionality
+- **Main App Component**: Centralized state management with React hooks for media items, filters, and UI state
+- **State Management**: Local component state for managing enhanced media metadata, filtering, and viewer states
+- **Data Persistence**: Browser localStorage for saving comprehensive media metadata across sessions
+- **File Handling**: Enhanced HTML5 File API with drag-and-drop and multi-file selection
+- **Media Viewers**: Integrated viewers for PDF, images, and extensible framework for other formats
 
 ### Component Structure
-- **App.tsx**: Main application component containing all business logic and state management
-- **MediaItem Interface**: TypeScript interface defining the structure of media objects with properties like id, name, type, size, tags, labels, dateAdded, and optional file reference
+- **App.tsx**: Main application component with enhanced media management logic
+- **MediaCard Component**: Individual media item display with metadata and actions
+- **MediaViewer Component**: Modal-based viewer system for different file types  
+- **MetadataEditor Component**: Full-featured metadata editing interface
+- **Enhanced MediaItem Interface**: Comprehensive data structure supporting various media types
 
 ### Data Model
-The core data structure centers around the MediaItem interface which includes:
-- Unique identifier and basic file metadata (name, type, size)
-- Organizational features (tags, labels arrays)
-- Timestamp tracking (dateAdded)
-- Optional file reference for uploaded content
+The enhanced MediaItem interface includes:
+- **Basic Metadata**: id, name, type, size, dateAdded, lastModified
+- **Media Classification**: mediaType (book, comic, pdf, audio, video, image, other)
+- **Organizational Features**: tags, labels, genres arrays
+- **Content Metadata**: title, sortTitle, summary, year, rating, coverImage
+- **Book-Specific**: authors, publisher, isbn, pageCount, series, seriesIndex  
+- **Media-Specific**: duration, artist, album, director
+- **File References**: Optional file object for uploaded content
 
 ### UI/UX Design Decisions
-- **Responsive Design**: CSS flexbox layout with mobile-friendly controls
-- **Visual Hierarchy**: Gradient header design with clear section separation
-- **Interactive Elements**: Focus states and hover effects for better user experience
-- **Drag-and-Drop Interface**: Visual feedback during file drag operations
+- **Material Design Inspired**: Modern card-based interface with elevation and transitions
+- **Media Type Visualization**: Color-coded borders and icons for different media types
+- **Advanced Search**: Multi-criteria search including title, author, and content
+- **Responsive Grid**: Adaptive layout that works on mobile and desktop
+- **Modal System**: Overlay-based viewers and editors with backdrop blur effects
 
 ### Build and Development
-- **TypeScript Configuration**: Strict mode enabled with modern ES features
-- **Build System**: Create React App's webpack configuration for development and production builds
-- **Testing Setup**: Jest and React Testing Library for unit and integration testing
+- **TypeScript Configuration**: Enhanced with stricter type checking for media metadata
+- **Enhanced Error Handling**: Better error states and user feedback
+- **Performance Optimizations**: Efficient state updates and render optimizations
 
 ## External Dependencies
 
@@ -47,6 +71,16 @@ The core data structure centers around the MediaItem interface which includes:
 - **React DOM 19.1.1**: DOM rendering layer for React components
 - **TypeScript 4.9.5**: Static type checking and enhanced developer experience
 
+### Media Handling Libraries
+- **react-pdf**: PDF viewing and rendering capabilities
+- **pdfjs-dist**: PDF.js library for document processing
+- **jszip**: ZIP file handling for comic book archives (CBZ support)
+- **epub**: EPUB file parsing and reading (future implementation)
+- **react-reader**: EPUB reader component (future implementation)
+- **file-type**: File type detection and validation
+- **react-dropzone**: Enhanced drag-and-drop file upload (available for future use)
+- **react-icons**: Icon library (available for future enhancements)
+
 ### Development and Testing Tools
 - **React Scripts 5.0.1**: Build tooling, development server, and configuration management
 - **@testing-library/react 16.3.0**: Component testing utilities focused on user interactions
@@ -54,12 +88,20 @@ The core data structure centers around the MediaItem interface which includes:
 - **@testing-library/user-event 13.5.0**: User interaction simulation for testing
 - **Web Vitals 2.1.4**: Performance monitoring and Core Web Vitals measurement
 
-### Browser APIs
-- **localStorage**: Client-side data persistence for media item storage
-- **File API**: Native browser file handling for upload and drag-and-drop functionality
-- **URL API**: File object URL generation for media preview capabilities
+### Browser APIs and Features
+- **localStorage**: Enhanced media metadata persistence
+- **File API**: Advanced file handling with type detection
+- **URL API**: File object URL generation for media preview
+- **PDF.js CDN**: Remote PDF processing worker
+
+### Future Enhancement Capabilities
+- **EPUB Reading**: Foundation laid for full ebook reading experience
+- **Comic Book Reading**: ZIP archive support ready for CBZ/CBR implementation
+- **External API Integration**: Structure ready for metadata enrichment from online sources
+- **Advanced Search**: Framework for full-text search and metadata queries
 
 ### Build and Configuration
-- **Create React App**: Zero-configuration build setup with webpack, Babel, and ESLint
-- **ESLint**: Code quality and style enforcement with React-specific rules
-- **Browserslist**: Target browser configuration for optimal compatibility and performance
+- **Create React App**: Zero-configuration build setup optimized for media handling
+- **ESLint**: Enhanced code quality rules for TypeScript and React
+- **Webpack**: Configured for media file handling and chunking
+- **Development Server**: Configured to serve on all interfaces for mobile testing
