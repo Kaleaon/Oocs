@@ -40,15 +40,22 @@ Universal Media Library is a comprehensive React-based web application designed 
 - **Visual Error Handling**: Red error indicators on tabs with issues and detailed error messages
 - **Responsive Design**: Fully mobile-optimized tabbed interface with adaptive layouts
 
-### Automatic Metadata Fetching (Slice 2 - COMPLETED)
-- **External API Integration**: Seamless integration with multiple metadata providers:
-  - **TMDB Integration**: Movies and TV shows with plot summaries, release dates, ratings, and poster art
+### Enhanced Dual-API Metadata System (Slice 2 - COMPLETED)
+- **Comprehensive API Integration**: Advanced dual-API system combining multiple metadata providers for maximum coverage:
+  - **TMDB Integration**: High-quality poster images, comprehensive cast/crew info, detailed plot summaries, and international release data
+  - **OMDb Integration**: Multiple rating sources (IMDb, Rotten Tomatoes, Metacritic), direct IMDb integration, and technical details
   - **Open Library**: Books with author information, publication details, and cover images
   - **MusicBrainz**: Music releases with artist, album, and release information
-- **Auto-Fill Button**: One-click metadata population directly within the metadata editor
-- **Smart Merging**: Preserves existing user data while filling in missing fields from external sources
-- **Visual Feedback**: Loading indicators, success/error messages, and real-time progress updates
-- **Secure API Management**: Uses Replit Secrets for secure API key storage and management
+- **Intelligent Data Merging**: Smart algorithm combines the best available data from multiple sources:
+  - Prefers TMDB for images and cast information due to higher quality
+  - Merges rating data from multiple sources for comprehensive scoring
+  - Automatically selects longer, more detailed plot summaries
+  - Combines and deduplicates genre information from all sources
+- **Enhanced Auto-Fill**: Single-click metadata population queries multiple APIs simultaneously with intelligent fallbacks
+- **Multiple Rating Sources**: Displays IMDb scores, Rotten Tomatoes percentages, and Metacritic ratings alongside internal 5-star ratings
+- **Robust Error Handling**: Graceful handling when APIs are unavailable, with automatic fallback to working sources
+- **Source Tracking**: User feedback shows which APIs provided successful data for transparency
+- **Secure API Management**: Uses Replit Secrets for secure TMDB and OMDb API key storage and management
 
 ## User Preferences
 
