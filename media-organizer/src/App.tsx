@@ -884,7 +884,6 @@ function MetadataEditor({ item, onSave, onClose }: MetadataEditorProps) {
   // Tab and validation state
   const [activeTab, setActiveTab] = useState<'basic' | 'media' | 'organization'>('basic');
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
-  const [touchedFields, setTouchedFields] = useState<Set<string>>(new Set());
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -946,11 +945,6 @@ function MetadataEditor({ item, onSave, onClose }: MetadataEditorProps) {
   // Handle field changes with validation
   const handleFieldChange = (field: string, value: any) => {
     setFormData({ ...formData, [field]: value });
-    setTouchedFields(prev => {
-      const newSet = new Set(prev);
-      newSet.add(field);
-      return newSet;
-    });
     
     // Clear validation error when field is corrected
     if (validationErrors[field]) {
