@@ -5,7 +5,7 @@ import { Document, Page, pdfjs } from 'react-pdf';
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
-// Enhanced MediaItem interface based on specifications
+// Forward declaration for MediaItem interface
 interface MediaItem {
   id: string;
   name: string;
@@ -60,6 +60,169 @@ interface MediaItem {
   lastModified?: Date;
   fileHash?: string;
 }
+
+// API Service Layer for External Metadata Fetching
+interface APIResult {
+  success: boolean;
+  data?: Partial<MediaItem>;
+  error?: string;
+}
+
+class MetadataAPIService {
+  // TMDB API for movies and TV shows
+  static async fetchMovieMetadata(title: string, year?: number): Promise<APIResult> {
+    try {
+      const apiKey = process.env.REACT_APP_TMDB_API_KEY || process.env.TMDB_API_KEY;
+      if (!apiKey) {
+        return { success: false, error: 'TMDB API key not configured' };
+      }
+
+      const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(title)}${year ? `&year=${year}` : ''}`;
+      const response = await fetch(searchUrl);
+      const data = await response.json();
+
+      if (data.results && data.results.length > 0) {
+        const movie = data.results[0];
+        return {
+          success: true,
+          data: {
+            title: movie.title,
+            summary: movie.overview,
+            year: movie.release_date ? parseInt(movie.release_date.split('-')[0]) : undefined,
+            rating: movie.vote_average ? Math.round(movie.vote_average / 2) : undefined,
+            coverImage: movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : undefined,
+            genres: movie.genre_ids ? [] : undefined // We'd need to map genre IDs to names
+          }
+        };
+      }
+
+      return { success: false, error: 'No movie found with that title' };
+    } catch (error) {
+      return { success: false, error: 'Failed to fetch movie data' };
+    }
+  }
+
+  static async fetchTVMetadata(title: string, year?: number): Promise<APIResult> {
+    try {
+      const apiKey = process.env.REACT_APP_TMDB_API_KEY || process.env.TMDB_API_KEY;
+      if (!apiKey) {
+        return { success: false, error: 'TMDB API key not configured' };
+      }
+
+      const searchUrl = `https://api.themoviedb.org/3/search/tv?api_key=${apiKey}&query=${encodeURIComponent(title)}${year ? `&first_air_date_year=${year}` : ''}`;
+      const response = await fetch(searchUrl);
+      const data = await response.json();
+
+      if (data.results && data.results.length > 0) {
+        const show = data.results[0];
+        return {
+          success: true,
+          data: {
+            showTitle: show.name,
+            title: show.name,
+            summary: show.overview,
+            year: show.first_air_date ? parseInt(show.first_air_date.split('-')[0]) : undefined,
+            rating: show.vote_average ? Math.round(show.vote_average / 2) : undefined,
+            coverImage: show.poster_path ? `https://image.tmdb.org/t/p/w500${show.poster_path}` : undefined
+          }
+        };
+      }
+
+      return { success: false, error: 'No TV show found with that title' };
+    } catch (error) {
+      return { success: false, error: 'Failed to fetch TV show data' };
+    }
+  }
+
+  // Open Library API for books
+  static async fetchBookMetadata(title: string, author?: string): Promise<APIResult> {
+    try {
+      let searchQuery = `title:${encodeURIComponent(title)}`;
+      if (author) {
+        searchQuery += `+author:${encodeURIComponent(author)}`;
+      }
+
+      const searchUrl = `https://openlibrary.org/search.json?q=${searchQuery}&limit=5`;
+      const response = await fetch(searchUrl);
+      const data = await response.json();
+
+      if (data.docs && data.docs.length > 0) {
+        const book = data.docs[0];
+        return {
+          success: true,
+          data: {
+            title: book.title,
+            authors: book.author_name || [],
+            publisher: book.publisher ? book.publisher[0] : undefined,
+            year: book.first_publish_year,
+            isbn: book.isbn ? book.isbn[0] : undefined,
+            pageCount: book.number_of_pages_median,
+            summary: book.first_sentence ? book.first_sentence.join(' ') : undefined,
+            coverImage: book.cover_i ? `https://covers.openlibrary.org/b/id/${book.cover_i}-L.jpg` : undefined
+          }
+        };
+      }
+
+      return { success: false, error: 'No book found with that title' };
+    } catch (error) {
+      return { success: false, error: 'Failed to fetch book data' };
+    }
+  }
+
+  // MusicBrainz API for music
+  static async fetchMusicMetadata(artist: string, album?: string): Promise<APIResult> {
+    try {
+      let searchQuery = `artist:${encodeURIComponent(artist)}`;
+      if (album) {
+        searchQuery += `+release:${encodeURIComponent(album)}`;
+      }
+
+      const searchUrl = `https://musicbrainz.org/ws/2/release?query=${searchQuery}&fmt=json&limit=5`;
+      const response = await fetch(searchUrl, {
+        headers: {
+          'User-Agent': 'UniversalMediaLibrary/1.0 (contact@example.com)'
+        }
+      });
+      const data = await response.json();
+
+      if (data.releases && data.releases.length > 0) {
+        const release = data.releases[0];
+        return {
+          success: true,
+          data: {
+            album: release.title,
+            artist: release['artist-credit'] ? release['artist-credit'][0].name : artist,
+            year: release.date ? parseInt(release.date.split('-')[0]) : undefined,
+            albumArtist: release['artist-credit'] ? release['artist-credit'][0].name : undefined
+          }
+        };
+      }
+
+      return { success: false, error: 'No music release found' };
+    } catch (error) {
+      return { success: false, error: 'Failed to fetch music data' };
+    }
+  }
+
+  // Generic metadata fetcher based on media type
+  static async fetchMetadata(mediaType: string, title: string, additionalInfo?: { year?: number; artist?: string; author?: string }): Promise<APIResult> {
+    switch (mediaType) {
+      case 'movie':
+        return this.fetchMovieMetadata(title, additionalInfo?.year);
+      case 'tv':
+        return this.fetchTVMetadata(title, additionalInfo?.year);
+      case 'book':
+      case 'comic':
+        return this.fetchBookMetadata(title, additionalInfo?.author);
+      case 'music':
+        return this.fetchMusicMetadata(additionalInfo?.artist || title, title);
+      default:
+        return { success: false, error: 'Metadata fetching not supported for this media type' };
+    }
+  }
+}
+
+// MediaItem interface already defined above for API service
 
 // File type detection utility
 const detectMediaType = (filename: string, mimeType: string): 'book' | 'comic' | 'pdf' | 'music' | 'movie' | 'tv' | 'image' | 'other' => {
@@ -884,6 +1047,10 @@ function MetadataEditor({ item, onSave, onClose }: MetadataEditorProps) {
   // Tab and validation state
   const [activeTab, setActiveTab] = useState<'basic' | 'media' | 'organization'>('basic');
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  
+  // API loading and feedback state
+  const [isLoadingAPI, setIsLoadingAPI] = useState(false);
+  const [apiMessage, setApiMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -975,6 +1142,60 @@ function MetadataEditor({ item, onSave, onClose }: MetadataEditorProps) {
     return Math.round((completed / allFields.length) * 100);
   };
 
+  // Auto-Fill functionality
+  const handleAutoFill = async () => {
+    if (!formData.title) {
+      setApiMessage({ type: 'error', text: 'Please enter a title first to search for metadata.' });
+      setTimeout(() => setApiMessage(null), 5000);
+      return;
+    }
+
+    setIsLoadingAPI(true);
+    setApiMessage(null);
+
+    try {
+      const additionalInfo: { year?: number; artist?: string; author?: string } = {};
+      
+      if (formData.year) additionalInfo.year = formData.year;
+      if (formData.artist) additionalInfo.artist = formData.artist;
+      if (formData.authors && formData.authors.length > 0) additionalInfo.author = formData.authors[0];
+
+      const result = await MetadataAPIService.fetchMetadata(item.mediaType, formData.title, additionalInfo);
+      
+      if (result.success && result.data) {
+        // Merge API data with existing form data, preserving user's existing data
+        const mergedData = { ...formData };
+        Object.keys(result.data).forEach(key => {
+          const typedKey = key as keyof MediaItem;
+          if (result.data![typedKey] !== undefined && result.data![typedKey] !== null) {
+            // Only overwrite if the current field is empty
+            if (!mergedData[typedKey] || 
+                (Array.isArray(mergedData[typedKey]) && (mergedData[typedKey] as any[]).length === 0) ||
+                String(mergedData[typedKey]).trim() === '') {
+              (mergedData as any)[typedKey] = result.data![typedKey];
+            }
+          }
+        });
+        
+        setFormData(mergedData);
+        if (result.data.coverImage) {
+          setCoverPreview(result.data.coverImage);
+        }
+        
+        setApiMessage({ type: 'success', text: 'Metadata successfully fetched and populated!' });
+        setTimeout(() => setApiMessage(null), 5000);
+      } else {
+        setApiMessage({ type: 'error', text: result.error || 'Failed to fetch metadata' });
+        setTimeout(() => setApiMessage(null), 5000);
+      }
+    } catch (error) {
+      setApiMessage({ type: 'error', text: 'An error occurred while fetching metadata' });
+      setTimeout(() => setApiMessage(null), 5000);
+    } finally {
+      setIsLoadingAPI(false);
+    }
+  };
+
   const addAuthor = () => {
     if (newAuthor.trim()) {
       setFormData(prev => ({
@@ -1063,11 +1284,41 @@ function MetadataEditor({ item, onSave, onClose }: MetadataEditorProps) {
               </div>
               <span className="completion-text">{calculateCompletion()}% Complete</span>
             </div>
+            {/* Auto-Fill Button */}
+            <button 
+              type="button" 
+              onClick={handleAutoFill}
+              disabled={isLoadingAPI || !formData.title}
+              className="auto-fill-btn"
+              title="Automatically fetch metadata from online databases"
+            >
+              {isLoadingAPI ? (
+                <>
+                  <span className="spinner">⟳</span>
+                  Fetching...
+                </>
+              ) : (
+                <>
+                  <span className="auto-fill-icon">🔍</span>
+                  Auto-Fill
+                </>
+              )}
+            </button>
           </div>
           <button onClick={onClose} className="close-btn">
             ✕
           </button>
         </div>
+
+        {/* API Message */}
+        {apiMessage && (
+          <div className={`api-message ${apiMessage.type}`}>
+            <span className="message-icon">
+              {apiMessage.type === 'success' ? '✅' : '❌'}
+            </span>
+            {apiMessage.text}
+          </div>
+        )}
 
         {/* Tab Navigation */}
         <div className="tab-navigation">
