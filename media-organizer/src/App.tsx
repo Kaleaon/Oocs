@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 import { Document, Page, pdfjs } from 'react-pdf';
-import JSZip from 'jszip';
 
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
@@ -12,7 +11,7 @@ interface MediaItem {
   name: string;
   originalName: string;
   type: string;
-  mediaType: 'book' | 'comic' | 'pdf' | 'audio' | 'video' | 'image' | 'other';
+  mediaType: 'book' | 'comic' | 'pdf' | 'music' | 'movie' | 'tv' | 'image' | 'other';
   size: number;
   tags: string[];
   labels: string[];
@@ -36,11 +35,26 @@ interface MediaItem {
   series?: string;
   seriesIndex?: number;
   
-  // Media-specific metadata
+  // Music-specific metadata
   duration?: number;
   artist?: string;
+  albumArtist?: string;
   album?: string;
+  trackNumber?: number;
+  discNumber?: number;
+  
+  // Video-specific metadata
   director?: string;
+  cast?: string[];
+  runtime?: number;
+  // TV Show specific
+  season?: number;
+  episode?: number;
+  showTitle?: string;
+  
+  // Playback metadata
+  currentPosition?: number;
+  watchedStatus?: 'unwatched' | 'partial' | 'watched';
   
   // File metadata
   lastModified?: Date;
@@ -48,8 +62,9 @@ interface MediaItem {
 }
 
 // File type detection utility
-const detectMediaType = (filename: string, mimeType: string): 'book' | 'comic' | 'pdf' | 'audio' | 'video' | 'image' | 'other' => {
+const detectMediaType = (filename: string, mimeType: string): 'book' | 'comic' | 'pdf' | 'music' | 'movie' | 'tv' | 'image' | 'other' => {
   const ext = filename.toLowerCase().split('.').pop() || '';
+  const lowerFilename = filename.toLowerCase();
   
   // Book formats
   if (['epub', 'mobi', 'azw', 'azw3', 'fb2', 'lit', 'pdb', 'txt'].includes(ext)) {
@@ -66,14 +81,24 @@ const detectMediaType = (filename: string, mimeType: string): 'book' | 'comic' |
     return 'pdf';
   }
   
-  // Audio
+  // Music
   if (['mp3', 'wav', 'flac', 'aac', 'm4a', 'ogg', 'wma'].includes(ext) || mimeType.startsWith('audio/')) {
-    return 'audio';
+    return 'music';
   }
   
-  // Video
+  // TV Shows (detect by common TV naming patterns)
   if (['mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv', 'webm'].includes(ext) || mimeType.startsWith('video/')) {
-    return 'video';
+    // Check for TV show patterns: S01E01, Season 1, Episode 1, etc.
+    const tvPatterns = [
+      /s\d+e\d+/i, // S01E01
+      /season\s*\d+.*episode\s*\d+/i, // Season 1 Episode 1
+      /\d+x\d+/i, // 1x01
+    ];
+    
+    if (tvPatterns.some(pattern => pattern.test(lowerFilename))) {
+      return 'tv';
+    }
+    return 'movie';
   }
   
   // Image
@@ -90,24 +115,38 @@ const getMediaIcon = (mediaType: string) => {
     case 'book': return '📚';
     case 'comic': return '📖';
     case 'pdf': return '📄';
-    case 'audio': return '🎵';
-    case 'video': return '🎬';
+    case 'music': return '🎵';
+    case 'movie': return '🎬';
+    case 'tv': return '📺';
     case 'image': return '🖼️';
     default: return '📁';
   }
 };
 
+// Get media type display name
+const getMediaTypeDisplayName = (mediaType: string) => {
+  switch (mediaType) {
+    case 'book': return 'Books';
+    case 'comic': return 'Comics';
+    case 'pdf': return 'Documents';
+    case 'music': return 'Music';
+    case 'movie': return 'Movies';
+    case 'tv': return 'TV Shows';
+    case 'image': return 'Photos';
+    default: return 'Other';
+  }
+};
+
 function App() {
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [selectedMediaTypes, setSelectedMediaTypes] = useState<string[]>([]);
-  const [sortBy, setSortBy] = useState<'name' | 'dateAdded' | 'size' | 'title'>('name');
   const [searchTerm, setSearchTerm] = useState('');
   const [isDragging, setIsDragging] = useState(false);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedItem, setSelectedItem] = useState<MediaItem | null>(null);
   const [showViewer, setShowViewer] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
+  
+  // Navigation state
+  const [currentView, setCurrentView] = useState<'home' | 'music' | 'movies' | 'tv' | 'books' | 'comics' | 'documents' | 'photos'>('home');
 
   // Load media items from localStorage on startup
   useEffect(() => {
@@ -127,24 +166,75 @@ function App() {
     localStorage.setItem('mediaItems', JSON.stringify(mediaItems));
   }, [mediaItems]);
 
-  // Extract basic metadata from file
-  const extractMetadata = async (file: File): Promise<Partial<MediaItem>> => {
+  // Extract enhanced metadata from file
+  const extractMetadata = async (file: File, mediaType: MediaItem['mediaType']): Promise<Partial<MediaItem>> => {
     const metadata: Partial<MediaItem> = {
       title: file.name.replace(/\.[^/.]+$/, ''), // Remove extension
-      lastModified: new Date(file.lastModified)
+      lastModified: new Date(file.lastModified),
+      watchedStatus: 'unwatched'
     };
 
-    // Auto-generate genres/tags based on file type and name
     const filename = file.name.toLowerCase();
     const autoTags: string[] = [];
 
-    // Simple genre detection based on filename keywords
-    if (filename.includes('sci-fi') || filename.includes('science fiction')) autoTags.push('Science Fiction');
-    if (filename.includes('fantasy')) autoTags.push('Fantasy');
-    if (filename.includes('mystery')) autoTags.push('Mystery');
-    if (filename.includes('romance')) autoTags.push('Romance');
-    if (filename.includes('horror')) autoTags.push('Horror');
-    if (filename.includes('comic') || filename.includes('manga')) autoTags.push('Comic');
+    // Enhanced metadata extraction based on media type
+    if (mediaType === 'music') {
+      // Extract music metadata from filename patterns
+      const patterns = {
+        artist: /^(.+?) - .+/,
+        album: /\[(.+?)\]/,
+        trackNumber: /^\d+\./
+      };
+      
+      const artistMatch = filename.match(patterns.artist);
+      if (artistMatch) metadata.artist = artistMatch[1];
+      
+      const albumMatch = filename.match(patterns.album);
+      if (albumMatch) metadata.album = albumMatch[1];
+      
+      // Auto-detect music genres
+      if (filename.includes('rock')) autoTags.push('Rock');
+      if (filename.includes('pop')) autoTags.push('Pop');
+      if (filename.includes('jazz')) autoTags.push('Jazz');
+      if (filename.includes('classical')) autoTags.push('Classical');
+      if (filename.includes('electronic')) autoTags.push('Electronic');
+    }
+    
+    else if (mediaType === 'movie' || mediaType === 'tv') {
+      // Extract video metadata from filename
+      const yearMatch = filename.match(/\((\d{4})\)/);
+      if (yearMatch) metadata.year = parseInt(yearMatch[1]);
+      
+      if (mediaType === 'tv') {
+        // Extract season/episode info
+        const seasonMatch = filename.match(/s(\d+)e(\d+)/i);
+        if (seasonMatch) {
+          metadata.season = parseInt(seasonMatch[1]);
+          metadata.episode = parseInt(seasonMatch[2]);
+        }
+        
+        // Extract show title (everything before season info)
+        const showMatch = filename.match(/^(.+?)(?:\s*s\d+e\d+)/i);
+        if (showMatch) metadata.showTitle = showMatch[1].replace(/\./g, ' ').trim();
+      }
+      
+      // Auto-detect video genres
+      if (filename.includes('action')) autoTags.push('Action');
+      if (filename.includes('comedy')) autoTags.push('Comedy');
+      if (filename.includes('drama')) autoTags.push('Drama');
+      if (filename.includes('horror')) autoTags.push('Horror');
+      if (filename.includes('sci-fi') || filename.includes('science fiction')) autoTags.push('Science Fiction');
+    }
+    
+    else if (mediaType === 'book') {
+      // Auto-detect book genres
+      if (filename.includes('sci-fi') || filename.includes('science fiction')) autoTags.push('Science Fiction');
+      if (filename.includes('fantasy')) autoTags.push('Fantasy');
+      if (filename.includes('mystery')) autoTags.push('Mystery');
+      if (filename.includes('romance')) autoTags.push('Romance');
+      if (filename.includes('horror')) autoTags.push('Horror');
+      if (filename.includes('non-fiction')) autoTags.push('Non-Fiction');
+    }
 
     if (autoTags.length > 0) {
       metadata.genres = autoTags;
@@ -160,7 +250,7 @@ function App() {
 
     for (const file of Array.from(files)) {
       const mediaType = detectMediaType(file.name, file.type);
-      const basicMetadata = await extractMetadata(file);
+      const basicMetadata = await extractMetadata(file, mediaType);
 
       const newItem: MediaItem = {
         id: Math.random().toString(36).substr(2, 9),
@@ -189,19 +279,9 @@ function App() {
     handleFileUpload(e.dataTransfer.files);
   };
 
-  const addTag = (itemId: string, tag: string) => {
+  const updateItem = (itemId: string, updates: Partial<MediaItem>) => {
     setMediaItems(prev => prev.map(item => 
-      item.id === itemId 
-        ? { ...item, tags: [...item.tags.filter(t => t !== tag), tag] }
-        : item
-    ));
-  };
-
-  const addLabel = (itemId: string, label: string) => {
-    setMediaItems(prev => prev.map(item => 
-      item.id === itemId 
-        ? { ...item, labels: [...item.labels.filter(l => l !== label), label] }
-        : item
+      item.id === itemId ? { ...item, ...updates } : item
     ));
   };
 
@@ -209,178 +289,299 @@ function App() {
     setMediaItems(prev => prev.filter(item => item.id !== itemId));
   };
 
-  const updateItem = (itemId: string, updates: Partial<MediaItem>) => {
-    setMediaItems(prev => prev.map(item => 
-      item.id === itemId ? { ...item, ...updates } : item
-    ));
+  // Filter items by media type and search
+  const getFilteredItems = (mediaTypes: MediaItem['mediaType'][], limit?: number) => {
+    return mediaItems
+      .filter(item => {
+        const matchesType = mediaTypes.includes(item.mediaType);
+        const matchesSearch = !searchTerm || 
+          (item.title || item.name).toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (item.artist || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (item.authors || []).some(author => author.toLowerCase().includes(searchTerm.toLowerCase()));
+        return matchesType && matchesSearch;
+      })
+      .sort((a, b) => b.dateAdded.getTime() - a.dateAdded.getTime())
+      .slice(0, limit);
   };
 
-  // Enhanced filtering and sorting
-  const filteredAndSortedItems = mediaItems
-    .filter(item => {
-      const matchesSearch = (item.title || item.name).toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           (item.authors || []).some(author => author.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                           item.summary?.toLowerCase().includes(searchTerm.toLowerCase());
-      
-      const matchesTags = selectedTags.length === 0 || selectedTags.some(tag => item.tags.includes(tag) || item.genres.includes(tag));
-      const matchesMediaType = selectedMediaTypes.length === 0 || selectedMediaTypes.includes(item.mediaType);
-      
-      return matchesSearch && matchesTags && matchesMediaType;
-    })
-    .sort((a, b) => {
-      switch (sortBy) {
-        case 'name': return a.name.localeCompare(b.name);
-        case 'title': return (a.title || a.name).localeCompare(b.title || b.name);
-        case 'dateAdded': return b.dateAdded.getTime() - a.dateAdded.getTime();
-        case 'size': return b.size - a.size;
-        default: return 0;
-      }
-    });
+  // Get recently added items (last 10)
+  const recentItems = mediaItems
+    .sort((a, b) => b.dateAdded.getTime() - a.dateAdded.getTime())
+    .slice(0, 10);
 
-  const allTags = Array.from(new Set([
-    ...mediaItems.flatMap(item => item.tags),
-    ...mediaItems.flatMap(item => item.genres)
-  ]));
+  // Get continue watching/reading items (items with partial progress)
+  const continueItems = mediaItems
+    .filter(item => item.watchedStatus === 'partial')
+    .sort((a, b) => b.dateAdded.getTime() - a.dateAdded.getTime())
+    .slice(0, 6);
 
-  const mediaTypeCounts = mediaItems.reduce((acc, item) => {
+  // Get media type counts for library overview
+  const libraryStats = mediaItems.reduce((acc, item) => {
     acc[item.mediaType] = (acc[item.mediaType] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
 
-  return (
-    <div className="media-organizer">
-      <header className="header">
-        <h1>📚 Universal Media Library</h1>
-        <p>Organize your books, comics, documents, and media files</p>
-      </header>
-
-      {/* Main Controls */}
-      <div className="controls">
-        <input
-          type="text"
-          placeholder="Search by title, author, or content..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="search-input"
-        />
-        
-        <select 
-          value={sortBy} 
-          onChange={(e) => setSortBy(e.target.value as any)}
-          className="sort-select"
-        >
-          <option value="name">Sort by Filename</option>
-          <option value="title">Sort by Title</option>
-          <option value="dateAdded">Sort by Date Added</option>
-          <option value="size">Sort by Size</option>
-        </select>
-
-        <div className="view-toggle">
-          <button 
-            className={viewMode === 'grid' ? 'active' : ''}
-            onClick={() => setViewMode('grid')}
-          >
-            Grid
-          </button>
-          <button 
-            className={viewMode === 'list' ? 'active' : ''}
-            onClick={() => setViewMode('list')}
-          >
-            List
-          </button>
+  const renderLibrarySection = (title: string, items: MediaItem[], viewAllAction?: () => void) => {
+    if (items.length === 0) return null;
+    
+    return (
+      <div className="library-section">
+        <div className="section-header">
+          <h2>{title}</h2>
+          {viewAllAction && (
+            <button className="view-all-btn" onClick={viewAllAction}>
+              View All
+            </button>
+          )}
+        </div>
+        <div className="media-row">
+          {items.map(item => (
+            <div key={item.id} className="media-card-compact" onClick={() => {
+              setSelectedItem(item);
+              setShowViewer(true);
+            }}>
+              <div className="media-poster">
+                <div className="media-icon-large">
+                  {getMediaIcon(item.mediaType)}
+                </div>
+                {item.watchedStatus === 'partial' && (
+                  <div className="progress-indicator">▶</div>
+                )}
+              </div>
+              <div className="media-info-compact">
+                <h4>{item.title || item.name}</h4>
+                <p className="media-subtitle">
+                  {item.mediaType === 'music' && item.artist && `${item.artist}`}
+                  {item.mediaType === 'movie' && item.year && `${item.year}`}
+                  {item.mediaType === 'tv' && item.season && item.episode && `S${item.season}E${item.episode}`}
+                  {item.mediaType === 'book' && item.authors && `${item.authors[0]}`}
+                </p>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
+    );
+  };
 
-      {/* Media Type Filter */}
-      <div className="media-type-filter">
-        <h3>Media Types:</h3>
-        <div className="media-type-buttons">
-          {Object.entries(mediaTypeCounts).map(([type, count]) => (
-            <button
-              key={type}
-              className={`media-type-btn ${selectedMediaTypes.includes(type) ? 'selected' : ''}`}
-              onClick={() => setSelectedMediaTypes(prev => 
-                prev.includes(type) 
-                  ? prev.filter(t => t !== type)
-                  : [...prev, type]
-              )}
+  const renderHomeDashboard = () => (
+    <div className="dashboard">
+      {/* Library Overview */}
+      <div className="library-overview">
+        <h2>Your Library</h2>
+        <div className="library-grid">
+          {Object.entries(libraryStats).map(([mediaType, count]) => (
+            <div 
+              key={mediaType} 
+              className="library-card"
+              onClick={() => setCurrentView(mediaType as any)}
             >
-              {getMediaIcon(type)} {type} ({count})
-            </button>
+              <div className="library-icon">
+                {getMediaIcon(mediaType)}
+              </div>
+              <div className="library-info">
+                <h3>{getMediaTypeDisplayName(mediaType)}</h3>
+                <p>{count} {count === 1 ? 'item' : 'items'}</p>
+              </div>
+            </div>
           ))}
         </div>
       </div>
 
-      {/* Tag Filter */}
-      {allTags.length > 0 && (
-        <div className="tag-filter">
-          <h3>Filter by Tags/Genres:</h3>
-          <div className="tag-list">
-            {allTags.map(tag => (
-              <button
-                key={tag}
-                className={`tag ${selectedTags.includes(tag) ? 'selected' : ''}`}
-                onClick={() => setSelectedTags(prev => 
-                  prev.includes(tag) 
-                    ? prev.filter(t => t !== tag)
-                    : [...prev, tag]
-                )}
-              >
-                {tag}
-              </button>
-            ))}
+      {/* Recently Added */}
+      {renderLibrarySection(
+        'Recently Added', 
+        recentItems,
+        () => console.log('View all recent')
+      )}
+
+      {/* Continue Watching/Reading */}
+      {renderLibrarySection(
+        'Continue Watching', 
+        continueItems
+      )}
+
+      {/* Quick access sections */}
+      {renderLibrarySection(
+        'Movies', 
+        getFilteredItems(['movie'], 6),
+        () => setCurrentView('movies')
+      )}
+
+      {renderLibrarySection(
+        'TV Shows', 
+        getFilteredItems(['tv'], 6),
+        () => setCurrentView('tv')
+      )}
+
+      {renderLibrarySection(
+        'Music', 
+        getFilteredItems(['music'], 6),
+        () => setCurrentView('music')
+      )}
+
+      {renderLibrarySection(
+        'Books', 
+        getFilteredItems(['book'], 6),
+        () => setCurrentView('books')
+      )}
+    </div>
+  );
+
+  const renderMediaTypeView = (mediaTypes: MediaItem['mediaType'][]) => {
+    const filteredItems = getFilteredItems(mediaTypes);
+    
+    return (
+      <div className="media-type-view">
+        <div className="media-grid-full">
+          {filteredItems.map(item => (
+            <MediaCard 
+              key={item.id} 
+              item={item}
+              onEdit={() => {
+                setSelectedItem(item);
+                setShowEditor(true);
+              }}
+              onView={() => {
+                setSelectedItem(item);
+                setShowViewer(true);
+              }}
+              onRemove={removeItem}
+            />
+          ))}
+        </div>
+        
+        {filteredItems.length === 0 && (
+          <div className="empty-state">
+            <h3>No {getMediaTypeDisplayName(mediaTypes[0]).toLowerCase()} found</h3>
+            <p>Upload some files to get started!</p>
           </div>
-        </div>
-      )}
-
-      {/* Upload Area */}
-      <div 
-        className={`upload-area ${isDragging ? 'dragging' : ''}`}
-        onDrop={handleDrop}
-        onDragOver={(e) => e.preventDefault()}
-        onDragEnter={() => setIsDragging(true)}
-        onDragLeave={() => setIsDragging(false)}
-      >
-        <p>📱 Drag and drop media files here or click to upload</p>
-        <p>Supports: EPUB, PDF, CBZ/CBR, Audio, Video, Images, and more</p>
-        <input
-          type="file"
-          multiple
-          accept=".epub,.pdf,.cbz,.cbr,.mp3,.mp4,.jpg,.jpeg,.png,.gif,.mobi,.azw,.txt"
-          onChange={(e) => handleFileUpload(e.target.files)}
-          className="file-input"
-        />
+        )}
       </div>
+    );
+  };
 
-      {/* Media Grid/List */}
-      <div className={`media-container ${viewMode}`}>
-        {filteredAndSortedItems.map(item => (
-          <MediaCard 
-            key={item.id} 
-            item={item} 
-            viewMode={viewMode}
-            onAddTag={addTag}
-            onAddLabel={addLabel}
-            onRemove={removeItem}
-            onEdit={() => {
-              setSelectedItem(item);
-              setShowEditor(true);
-            }}
-            onView={() => {
-              setSelectedItem(item);
-              setShowViewer(true);
-            }}
+  return (
+    <div className="media-organizer plex-style">
+      {/* Navigation Sidebar */}
+      <nav className="sidebar">
+        <div className="sidebar-header">
+          <h1>📚 Media Hub</h1>
+        </div>
+        
+        <div className="nav-section">
+          <button 
+            className={currentView === 'home' ? 'nav-item active' : 'nav-item'}
+            onClick={() => setCurrentView('home')}
+          >
+            🏠 Home
+          </button>
+        </div>
+
+        <div className="nav-section">
+          <h3>Library</h3>
+          <button 
+            className={currentView === 'movies' ? 'nav-item active' : 'nav-item'}
+            onClick={() => setCurrentView('movies')}
+          >
+            🎬 Movies ({libraryStats.movie || 0})
+          </button>
+          <button 
+            className={currentView === 'tv' ? 'nav-item active' : 'nav-item'}
+            onClick={() => setCurrentView('tv')}
+          >
+            📺 TV Shows ({libraryStats.tv || 0})
+          </button>
+          <button 
+            className={currentView === 'music' ? 'nav-item active' : 'nav-item'}
+            onClick={() => setCurrentView('music')}
+          >
+            🎵 Music ({libraryStats.music || 0})
+          </button>
+          <button 
+            className={currentView === 'books' ? 'nav-item active' : 'nav-item'}
+            onClick={() => setCurrentView('books')}
+          >
+            📚 Books ({libraryStats.book || 0})
+          </button>
+          <button 
+            className={currentView === 'comics' ? 'nav-item active' : 'nav-item'}
+            onClick={() => setCurrentView('comics')}
+          >
+            📖 Comics ({libraryStats.comic || 0})
+          </button>
+          <button 
+            className={currentView === 'documents' ? 'nav-item active' : 'nav-item'}
+            onClick={() => setCurrentView('documents')}
+          >
+            📄 Documents ({libraryStats.pdf || 0})
+          </button>
+          <button 
+            className={currentView === 'photos' ? 'nav-item active' : 'nav-item'}
+            onClick={() => setCurrentView('photos')}
+          >
+            🖼️ Photos ({libraryStats.image || 0})
+          </button>
+        </div>
+      </nav>
+
+      {/* Main Content */}
+      <main className="main-content">
+        {/* Top Header */}
+        <header className="top-header">
+          <div className="header-left">
+            <h2>
+              {currentView === 'home' && 'Dashboard'}
+              {currentView === 'movies' && 'Movies'}
+              {currentView === 'tv' && 'TV Shows'}
+              {currentView === 'music' && 'Music'}
+              {currentView === 'books' && 'Books'}
+              {currentView === 'comics' && 'Comics'}
+              {currentView === 'documents' && 'Documents'}
+              {currentView === 'photos' && 'Photos'}
+            </h2>
+          </div>
+          <div className="header-right">
+            <input
+              type="text"
+              placeholder="Search your library..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="search-input-header"
+            />
+          </div>
+        </header>
+
+        {/* Upload Area */}
+        <div 
+          className={`upload-area-header ${isDragging ? 'dragging' : ''}`}
+          onDrop={handleDrop}
+          onDragOver={(e) => e.preventDefault()}
+          onDragEnter={() => setIsDragging(true)}
+          onDragLeave={() => setIsDragging(false)}
+        >
+          <span>📱 Drop files here to add to your library</span>
+          <input
+            type="file"
+            multiple
+            accept=".epub,.pdf,.cbz,.cbr,.mp3,.mp4,.jpg,.jpeg,.png,.gif,.mobi,.azw,.txt,.mkv,.avi"
+            onChange={(e) => handleFileUpload(e.target.files)}
+            className="file-input-header"
           />
-        ))}
-      </div>
-
-      {/* Empty State */}
-      {mediaItems.length === 0 && (
-        <div className="empty-state">
-          <h2>No media files yet</h2>
-          <p>Upload books, comics, PDFs, or other media to start building your library!</p>
         </div>
-      )}
+
+        {/* Content Area */}
+        <div className="content-area">
+          {currentView === 'home' && renderHomeDashboard()}
+          {currentView === 'movies' && renderMediaTypeView(['movie'])}
+          {currentView === 'tv' && renderMediaTypeView(['tv'])}
+          {currentView === 'music' && renderMediaTypeView(['music'])}
+          {currentView === 'books' && renderMediaTypeView(['book'])}
+          {currentView === 'comics' && renderMediaTypeView(['comic'])}
+          {currentView === 'documents' && renderMediaTypeView(['pdf'])}
+          {currentView === 'photos' && renderMediaTypeView(['image'])}
+        </div>
+      </main>
 
       {/* Media Viewer Modal */}
       {showViewer && selectedItem && (
@@ -415,24 +616,12 @@ function App() {
 // Enhanced Media Card Component
 interface MediaCardProps {
   item: MediaItem;
-  viewMode: 'grid' | 'list';
-  onAddTag: (id: string, tag: string) => void;
-  onAddLabel: (id: string, label: string) => void;
-  onRemove: (id: string) => void;
   onEdit: () => void;
   onView: () => void;
+  onRemove: (id: string) => void;
 }
 
-function MediaCard({ item, viewMode, onAddTag, onAddLabel, onRemove, onEdit, onView }: MediaCardProps) {
-  const [newTag, setNewTag] = useState('');
-
-  const handleAddTag = () => {
-    if (newTag.trim()) {
-      onAddTag(item.id, newTag.trim());
-      setNewTag('');
-    }
-  };
-
+function MediaCard({ item, onEdit, onView, onRemove }: MediaCardProps) {
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -441,65 +630,81 @@ function MediaCard({ item, viewMode, onAddTag, onAddLabel, onRemove, onEdit, onV
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
+  const getDisplayInfo = () => {
+    switch (item.mediaType) {
+      case 'music':
+        return {
+          primary: item.title || item.name,
+          secondary: item.artist || 'Unknown Artist',
+          tertiary: item.album || ''
+        };
+      case 'movie':
+        return {
+          primary: item.title || item.name,
+          secondary: item.year ? `(${item.year})` : '',
+          tertiary: item.director || ''
+        };
+      case 'tv':
+        return {
+          primary: item.showTitle || item.title || item.name,
+          secondary: item.season && item.episode ? `S${item.season}E${item.episode}` : '',
+          tertiary: item.director || ''
+        };
+      case 'book':
+        return {
+          primary: item.title || item.name,
+          secondary: item.authors ? item.authors.join(', ') : '',
+          tertiary: item.series || ''
+        };
+      default:
+        return {
+          primary: item.title || item.name,
+          secondary: '',
+          tertiary: ''
+        };
+    }
+  };
+
+  const displayInfo = getDisplayInfo();
+
   return (
-    <div className={`media-card ${viewMode} ${item.mediaType}`}>
-      <div className="media-icon">
-        {getMediaIcon(item.mediaType)}
+    <div className="media-card-detailed">
+      <div className="media-poster-large">
+        <div className="media-icon-xl">
+          {getMediaIcon(item.mediaType)}
+        </div>
+        <div className="media-overlay">
+          <button onClick={onView} className="play-btn">▶</button>
+        </div>
       </div>
-
-      <div className="media-info">
-        <h3>{item.title || item.name}</h3>
-        {item.authors && item.authors.length > 0 && (
-          <p className="authors">by {item.authors.join(', ')}</p>
-        )}
-        {item.series && (
-          <p className="series">{item.series} {item.seriesIndex && `#${item.seriesIndex}`}</p>
-        )}
-        <div className="file-details">
-          <span className="media-type">{item.mediaType.toUpperCase()}</span>
+      
+      <div className="media-details">
+        <h3>{displayInfo.primary}</h3>
+        {displayInfo.secondary && <p className="media-secondary">{displayInfo.secondary}</p>}
+        {displayInfo.tertiary && <p className="media-tertiary">{displayInfo.tertiary}</p>}
+        
+        <div className="media-meta">
           <span className="file-size">{formatFileSize(item.size)}</span>
-          {item.year && <span className="year">{item.year}</span>}
+          {item.genres.length > 0 && (
+            <div className="genres">
+              {item.genres.slice(0, 2).map(genre => (
+                <span key={genre} className="genre-tag">{genre}</span>
+              ))}
+            </div>
+          )}
         </div>
-        {item.summary && (
-          <p className="summary">{item.summary.substring(0, 150)}...</p>
-        )}
-      </div>
-
-      {/* Tags and Genres */}
-      <div className="tags-section">
-        <div className="tags">
-          {[...item.tags, ...item.genres].map(tag => (
-            <span key={tag} className="tag">{tag}</span>
-          ))}
+        
+        <div className="media-actions">
+          <button onClick={onView} className="btn-play">Play</button>
+          <button onClick={onEdit} className="btn-edit">Edit</button>
+          <button onClick={() => onRemove(item.id)} className="btn-remove">Remove</button>
         </div>
-        <div className="add-tag">
-          <input
-            value={newTag}
-            onChange={(e) => setNewTag(e.target.value)}
-            placeholder="Add tag..."
-            onKeyPress={(e) => e.key === 'Enter' && handleAddTag()}
-          />
-          <button onClick={handleAddTag}>Add</button>
-        </div>
-      </div>
-
-      {/* Action Buttons */}
-      <div className="action-buttons">
-        <button onClick={onView} className="view-btn" title="View/Read">
-          👁️
-        </button>
-        <button onClick={onEdit} className="edit-btn" title="Edit Metadata">
-          ✏️
-        </button>
-        <button onClick={() => onRemove(item.id)} className="remove-btn" title="Remove">
-          🗑️
-        </button>
       </div>
     </div>
   );
 }
 
-// Media Viewer Component
+// Media Viewer Component (keeping the existing one)
 interface MediaViewerProps {
   item: MediaItem;
   onClose: () => void;
@@ -555,13 +760,32 @@ function MediaViewer({ item, onClose }: MediaViewerProps) {
           />
         );
       
-      case 'book':
-      case 'comic':
+      case 'music':
         return (
-          <div className="text-viewer">
-            <h3>{item.title || item.name}</h3>
-            <p>Book/Comic viewer coming soon...</p>
-            <p>File format: {item.type}</p>
+          <div className="audio-player">
+            <div className="audio-info">
+              <h3>{item.title || item.name}</h3>
+              {item.artist && <p>by {item.artist}</p>}
+              {item.album && <p>from {item.album}</p>}
+            </div>
+            <audio controls src={URL.createObjectURL(item.file)}>
+              Your browser does not support the audio element.
+            </audio>
+          </div>
+        );
+      
+      case 'movie':
+      case 'tv':
+        return (
+          <div className="video-player">
+            <video controls src={URL.createObjectURL(item.file)} className="video-element">
+              Your browser does not support the video element.
+            </video>
+            <div className="video-info">
+              <h3>{item.title || item.name}</h3>
+              {item.year && <p>({item.year})</p>}
+              {item.summary && <p>{item.summary}</p>}
+            </div>
           </div>
         );
       
@@ -569,7 +793,7 @@ function MediaViewer({ item, onClose }: MediaViewerProps) {
         return (
           <div className="unsupported-viewer">
             <h3>{item.title || item.name}</h3>
-            <p>Viewer for {item.mediaType} files is not yet supported.</p>
+            <p>Preview not available for {item.mediaType} files.</p>
             <p>File type: {item.type}</p>
           </div>
         );
@@ -594,7 +818,7 @@ function MediaViewer({ item, onClose }: MediaViewerProps) {
   );
 }
 
-// Metadata Editor Component
+// Metadata Editor Component (keeping the existing one with updates)
 interface MetadataEditorProps {
   item: MediaItem;
   onSave: (updates: Partial<MediaItem>) => void;
@@ -605,6 +829,9 @@ function MetadataEditor({ item, onSave, onClose }: MetadataEditorProps) {
   const [formData, setFormData] = useState<Partial<MediaItem>>({
     title: item.title || item.name,
     authors: item.authors || [],
+    artist: item.artist || '',
+    album: item.album || '',
+    director: item.director || '',
     publisher: item.publisher || '',
     year: item.year || undefined,
     summary: item.summary || '',
@@ -612,7 +839,10 @@ function MetadataEditor({ item, onSave, onClose }: MetadataEditorProps) {
     seriesIndex: item.seriesIndex || undefined,
     tags: item.tags || [],
     genres: item.genres || [],
-    rating: item.rating || 0
+    rating: item.rating || 0,
+    season: item.season || undefined,
+    episode: item.episode || undefined,
+    showTitle: item.showTitle || ''
   });
 
   const [newAuthor, setNewAuthor] = useState('');
@@ -662,7 +892,7 @@ function MetadataEditor({ item, onSave, onClose }: MetadataEditorProps) {
       <div className="modal-backdrop" onClick={onClose} />
       <div className="modal-content">
         <div className="modal-header">
-          <h2>Edit Metadata</h2>
+          <h2>Edit Metadata - {getMediaTypeDisplayName(item.mediaType)}</h2>
           <button onClick={onClose} className="close-btn">
             ✕
           </button>
@@ -677,36 +907,122 @@ function MetadataEditor({ item, onSave, onClose }: MetadataEditorProps) {
             />
           </div>
 
-          <div className="form-group">
-            <label>Authors</label>
-            <div className="authors-list">
-              {(formData.authors || []).map((author, index) => (
-                <div key={index} className="author-chip">
-                  {author}
-                  <button type="button" onClick={() => removeAuthor(index)}>×</button>
-                </div>
-              ))}
-            </div>
-            <div className="add-author">
-              <input
-                type="text"
-                value={newAuthor}
-                onChange={(e) => setNewAuthor(e.target.value)}
-                placeholder="Add author..."
-                onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addAuthor())}
-              />
-              <button type="button" onClick={addAuthor}>Add</button>
-            </div>
-          </div>
+          {/* Music-specific fields */}
+          {item.mediaType === 'music' && (
+            <>
+              <div className="form-group">
+                <label>Artist</label>
+                <input
+                  type="text"
+                  value={formData.artist || ''}
+                  onChange={(e) => setFormData({...formData, artist: e.target.value})}
+                />
+              </div>
+              <div className="form-group">
+                <label>Album</label>
+                <input
+                  type="text"
+                  value={formData.album || ''}
+                  onChange={(e) => setFormData({...formData, album: e.target.value})}
+                />
+              </div>
+            </>
+          )}
 
-          <div className="form-group">
-            <label>Publisher</label>
-            <input
-              type="text"
-              value={formData.publisher || ''}
-              onChange={(e) => setFormData({...formData, publisher: e.target.value})}
-            />
-          </div>
+          {/* Video-specific fields */}
+          {(item.mediaType === 'movie' || item.mediaType === 'tv') && (
+            <>
+              <div className="form-group">
+                <label>Director</label>
+                <input
+                  type="text"
+                  value={formData.director || ''}
+                  onChange={(e) => setFormData({...formData, director: e.target.value})}
+                />
+              </div>
+              {item.mediaType === 'tv' && (
+                <>
+                  <div className="form-group">
+                    <label>Show Title</label>
+                    <input
+                      type="text"
+                      value={formData.showTitle || ''}
+                      onChange={(e) => setFormData({...formData, showTitle: e.target.value})}
+                    />
+                  </div>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>Season</label>
+                      <input
+                        type="number"
+                        value={formData.season || ''}
+                        onChange={(e) => setFormData({...formData, season: parseInt(e.target.value) || undefined})}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Episode</label>
+                      <input
+                        type="number"
+                        value={formData.episode || ''}
+                        onChange={(e) => setFormData({...formData, episode: parseInt(e.target.value) || undefined})}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {/* Book-specific fields */}
+          {item.mediaType === 'book' && (
+            <>
+              <div className="form-group">
+                <label>Authors</label>
+                <div className="authors-list">
+                  {(formData.authors || []).map((author, index) => (
+                    <div key={index} className="author-chip">
+                      {author}
+                      <button type="button" onClick={() => removeAuthor(index)}>×</button>
+                    </div>
+                  ))}
+                </div>
+                <div className="add-author">
+                  <input
+                    type="text"
+                    value={newAuthor}
+                    onChange={(e) => setNewAuthor(e.target.value)}
+                    placeholder="Add author..."
+                    onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addAuthor())}
+                  />
+                  <button type="button" onClick={addAuthor}>Add</button>
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Publisher</label>
+                <input
+                  type="text"
+                  value={formData.publisher || ''}
+                  onChange={(e) => setFormData({...formData, publisher: e.target.value})}
+                />
+              </div>
+              <div className="form-group">
+                <label>Series</label>
+                <input
+                  type="text"
+                  value={formData.series || ''}
+                  onChange={(e) => setFormData({...formData, series: e.target.value})}
+                />
+              </div>
+              <div className="form-group">
+                <label>Series Index</label>
+                <input
+                  type="number"
+                  value={formData.seriesIndex || ''}
+                  onChange={(e) => setFormData({...formData, seriesIndex: parseInt(e.target.value) || undefined})}
+                />
+              </div>
+            </>
+          )}
 
           <div className="form-group">
             <label>Year</label>
@@ -714,24 +1030,6 @@ function MetadataEditor({ item, onSave, onClose }: MetadataEditorProps) {
               type="number"
               value={formData.year || ''}
               onChange={(e) => setFormData({...formData, year: parseInt(e.target.value) || undefined})}
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Series</label>
-            <input
-              type="text"
-              value={formData.series || ''}
-              onChange={(e) => setFormData({...formData, series: e.target.value})}
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Series Index</label>
-            <input
-              type="number"
-              value={formData.seriesIndex || ''}
-              onChange={(e) => setFormData({...formData, seriesIndex: parseInt(e.target.value) || undefined})}
             />
           </div>
 
