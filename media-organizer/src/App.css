@@ -1300,6 +1300,36 @@ audio {
   transform: scale(1.1);
 }
 
+/* External Ratings */
+.external-ratings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.rating-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+}
+
+.rating-source {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.9em;
+}
+
+.rating-value {
+  font-weight: 700;
+  color: #ffd700;
+  font-size: 0.9em;
+}
+
 /* Cover Upload Section */
 .cover-upload-section {
   display: flex;

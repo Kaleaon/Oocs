@@ -59,6 +59,12 @@ interface MediaItem {
   // File metadata
   lastModified?: Date;
   fileHash?: string;
+  
+  // External ratings and IDs
+  imdbRating?: string;
+  rottenTomatoesRating?: string;
+  metacriticRating?: string;
+  imdbId?: string;
 }
 
 // API Service Layer for External Metadata Fetching
@@ -69,6 +75,57 @@ interface APIResult {
 }
 
 class MetadataAPIService {
+  // OMDb API for movies with multiple ratings
+  static async fetchOMDbMetadata(title: string, year?: number, imdbId?: string): Promise<APIResult> {
+    try {
+      const apiKey = 'a207177'; // OMDb API key
+      let searchUrl = `http://www.omdbapi.com/?apikey=${apiKey}`;
+      
+      if (imdbId) {
+        searchUrl += `&i=${imdbId}`;
+      } else {
+        searchUrl += `&t=${encodeURIComponent(title)}`;
+        if (year) searchUrl += `&y=${year}`;
+      }
+
+      const response = await fetch(searchUrl);
+      const data = await response.json();
+
+      if (data.Response === 'True') {
+        // Parse ratings from OMDb
+        const ratings: { [key: string]: string } = {};
+        if (data.Ratings) {
+          data.Ratings.forEach((rating: any) => {
+            ratings[rating.Source] = rating.Value;
+          });
+        }
+
+        return {
+          success: true,
+          data: {
+            title: data.Title,
+            summary: data.Plot !== 'N/A' ? data.Plot : undefined,
+            year: data.Year && data.Year !== 'N/A' ? parseInt(data.Year) : undefined,
+            director: data.Director !== 'N/A' ? data.Director : undefined,
+            cast: data.Actors !== 'N/A' ? data.Actors.split(', ') : undefined,
+            runtime: data.Runtime !== 'N/A' ? parseInt(data.Runtime) : undefined,
+            genres: data.Genre !== 'N/A' ? data.Genre.split(', ') : undefined,
+            coverImage: data.Poster !== 'N/A' ? data.Poster : undefined,
+            // Additional OMDb-specific data
+            imdbRating: ratings['Internet Movie Database'],
+            rottenTomatoesRating: ratings['Rotten Tomatoes'],
+            metacriticRating: ratings['Metacritic'],
+            imdbId: data.imdbID
+          }
+        };
+      }
+
+      return { success: false, error: data.Error || 'No movie found' };
+    } catch (error) {
+      return { success: false, error: 'Failed to fetch OMDb data' };
+    }
+  }
+
   // TMDB API for movies and TV shows
   static async fetchMovieMetadata(title: string, year?: number): Promise<APIResult> {
     try {
@@ -204,11 +261,106 @@ class MetadataAPIService {
     }
   }
 
-  // Generic metadata fetcher based on media type
+  // Enhanced metadata merger for combining multiple API sources
+  static mergeMetadata(tmdbData?: Partial<MediaItem>, omdbData?: Partial<MediaItem>): Partial<MediaItem> {
+    const merged: Partial<MediaItem> = {};
+    
+    // Combine data, preferring more complete information
+    if (tmdbData?.title || omdbData?.title) {
+      merged.title = tmdbData?.title || omdbData?.title;
+    }
+    
+    // Prefer longer, more detailed summaries
+    if (tmdbData?.summary && omdbData?.summary) {
+      merged.summary = tmdbData.summary.length > omdbData.summary.length ? tmdbData.summary : omdbData.summary;
+    } else {
+      merged.summary = tmdbData?.summary || omdbData?.summary;
+    }
+    
+    // Use TMDB year if available, otherwise OMDb
+    merged.year = tmdbData?.year || omdbData?.year;
+    
+    // Prefer TMDB images (higher quality)
+    merged.coverImage = tmdbData?.coverImage || omdbData?.coverImage;
+    
+    // Director information
+    merged.director = tmdbData?.director || omdbData?.director;
+    
+    // Cast - prefer TMDB's more complete cast list
+    merged.cast = tmdbData?.cast || omdbData?.cast;
+    
+    // Runtime
+    merged.runtime = tmdbData?.runtime || omdbData?.runtime;
+    
+    // Genres - combine and deduplicate
+    if (tmdbData?.genres || omdbData?.genres) {
+      const allGenres = [...(tmdbData?.genres || []), ...(omdbData?.genres || [])];
+      merged.genres = Array.from(new Set(allGenres));
+    }
+    
+    // Rating - prefer TMDB's 5-star system, but include OMDb ratings as additional data
+    merged.rating = tmdbData?.rating;
+    
+    // Add OMDb-specific rating data
+    if (omdbData?.imdbRating) merged.imdbRating = omdbData.imdbRating;
+    if (omdbData?.rottenTomatoesRating) merged.rottenTomatoesRating = omdbData.rottenTomatoesRating;
+    if (omdbData?.metacriticRating) merged.metacriticRating = omdbData.metacriticRating;
+    if (omdbData?.imdbId) merged.imdbId = omdbData.imdbId;
+    
+    return merged;
+  }
+
+  // Enhanced dual-API movie fetcher
+  static async fetchEnhancedMovieMetadata(title: string, year?: number): Promise<APIResult> {
+    try {
+      // Fetch from both APIs simultaneously
+      const [tmdbResult, omdbResult] = await Promise.allSettled([
+        this.fetchMovieMetadata(title, year),
+        this.fetchOMDbMetadata(title, year)
+      ]);
+      
+      let tmdbData: Partial<MediaItem> | undefined;
+      let omdbData: Partial<MediaItem> | undefined;
+      const errors: string[] = [];
+      
+      // Process TMDB result
+      if (tmdbResult.status === 'fulfilled' && tmdbResult.value.success) {
+        tmdbData = tmdbResult.value.data;
+      } else if (tmdbResult.status === 'fulfilled') {
+        errors.push(`TMDB: ${tmdbResult.value.error}`);
+      }
+      
+      // Process OMDb result
+      if (omdbResult.status === 'fulfilled' && omdbResult.value.success) {
+        omdbData = omdbResult.value.data;
+      } else if (omdbResult.status === 'fulfilled') {
+        errors.push(`OMDb: ${omdbResult.value.error}`);
+      }
+      
+      // If we have data from at least one source, merge and return
+      if (tmdbData || omdbData) {
+        const mergedData = this.mergeMetadata(tmdbData, omdbData);
+        return {
+          success: true,
+          data: mergedData
+        };
+      }
+      
+      // If both failed, return combined error
+      return {
+        success: false,
+        error: errors.length > 0 ? errors.join('; ') : 'Failed to fetch movie data from all sources'
+      };
+    } catch (error) {
+      return { success: false, error: 'Failed to fetch enhanced movie data' };
+    }
+  }
+
+  // Generic metadata fetcher with enhanced movie support
   static async fetchMetadata(mediaType: string, title: string, additionalInfo?: { year?: number; artist?: string; author?: string }): Promise<APIResult> {
     switch (mediaType) {
       case 'movie':
-        return this.fetchMovieMetadata(title, additionalInfo?.year);
+        return this.fetchEnhancedMovieMetadata(title, additionalInfo?.year);
       case 'tv':
         return this.fetchTVMetadata(title, additionalInfo?.year);
       case 'book':
@@ -1182,7 +1334,16 @@ function MetadataEditor({ item, onSave, onClose }: MetadataEditorProps) {
           setCoverPreview(result.data.coverImage);
         }
         
-        setApiMessage({ type: 'success', text: 'Metadata successfully fetched and populated!' });
+        // Show detailed success message with sources
+        let sources = [];
+        if (result.data.imdbRating || result.data.rottenTomatoesRating) sources.push('OMDb');
+        if (result.data.coverImage?.includes('tmdb')) sources.push('TMDB');
+        if (sources.length === 0) sources.push('External APIs');
+        
+        setApiMessage({ 
+          type: 'success', 
+          text: `Metadata successfully fetched from ${sources.join(' + ')}!` 
+        });
         setTimeout(() => setApiMessage(null), 5000);
       } else {
         setApiMessage({ type: 'error', text: result.error || 'Failed to fetch metadata' });
@@ -1430,6 +1591,33 @@ function MetadataEditor({ item, onSave, onClose }: MetadataEditorProps) {
                     ))}
                   </div>
                 </div>
+
+                {/* External Ratings Display */}
+                {(formData.imdbRating || formData.rottenTomatoesRating || formData.metacriticRating) && (
+                  <div className="form-group">
+                    <label className="section-label">External Ratings</label>
+                    <div className="external-ratings">
+                      {formData.imdbRating && (
+                        <div className="rating-item">
+                          <span className="rating-source">IMDb:</span>
+                          <span className="rating-value">{formData.imdbRating}</span>
+                        </div>
+                      )}
+                      {formData.rottenTomatoesRating && (
+                        <div className="rating-item">
+                          <span className="rating-source">Rotten Tomatoes:</span>
+                          <span className="rating-value">{formData.rottenTomatoesRating}</span>
+                        </div>
+                      )}
+                      {formData.metacriticRating && (
+                        <div className="rating-item">
+                          <span className="rating-source">Metacritic:</span>
+                          <span className="rating-value">{formData.metacriticRating}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
