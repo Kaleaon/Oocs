@@ -5,77 +5,141 @@ import { Document, Page, pdfjs } from 'react-pdf';
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
-// Forward declaration for MediaItem interface
+/**
+ * @interface MediaItem
+ * @description Represents a single media item in the library. This comprehensive interface
+ * holds all data related to a file, including its basic properties, metadata for various
+ * media types, playback status, and file system information.
+ */
 interface MediaItem {
+  /** @property {string} id - A unique identifier for the media item. */
   id: string;
+  /** @property {string} name - The current filename of the media item. */
   name: string;
+  /** @property {string} originalName - The original filename at the time of import. */
   originalName: string;
+  /** @property {string} type - The MIME type of the file. */
   type: string;
+  /** @property {'book' | 'comic' | 'pdf' | 'music' | 'movie' | 'tv' | 'image' | 'other'} mediaType - The detected category of the media. */
   mediaType: 'book' | 'comic' | 'pdf' | 'music' | 'movie' | 'tv' | 'image' | 'other';
+  /** @property {number} size - The size of the file in bytes. */
   size: number;
+  /** @property {string[]} tags - User-defined tags for organization. */
   tags: string[];
+  /** @property {string[]} labels - User-defined labels for categorization. */
   labels: string[];
+  /** @property {string[]} genres - The genres associated with the media item. */
   genres: string[];
+  /** @property {Date} dateAdded - The timestamp when the item was added to the library. */
   dateAdded: Date;
+  /** @property {File} [file] - The actual File object, used for viewing content. Stored in memory. */
   file?: File;
   
-  // Common metadata
+  // --- Common Metadata ---
+  /** @property {string} [title] - The main title of the media item. */
   title?: string;
+  /** @property {string} [sortTitle] - A version of the title used for sorting (e.g., "Avengers, The"). */
   sortTitle?: string;
+  /** @property {string} [summary] - A plot summary or description. */
   summary?: string;
+  /** @property {number} [year] - The primary release year. */
   year?: number;
+  /** @property {number} [rating] - A user-defined rating, typically from 1 to 5. */
   rating?: number;
+  /** @property {string} [coverImage] - A URL or base64 string for the cover image. */
   coverImage?: string;
   
-  // Book-specific metadata
+  // --- Book-specific metadata ---
+  /** @property {string[]} [authors] - A list of authors for the book. */
   authors?: string[];
+  /** @property {string} [publisher] - The publisher's name. */
   publisher?: string;
+  /** @property {string} [isbn] - The ISBN of the book. */
   isbn?: string;
+  /** @property {number} [pageCount] - The number of pages in the book. */
   pageCount?: number;
+  /** @property {string} [series] - The name of the series the book belongs to. */
   series?: string;
+  /** @property {number} [seriesIndex] - The book's index within a series. */
   seriesIndex?: number;
   
-  // Music-specific metadata
+  // --- Music-specific metadata ---
+  /** @property {number} [duration] - The duration of the track in seconds. */
   duration?: number;
+  /** @property {string} [artist] - The primary artist of the track. */
   artist?: string;
+  /** @property {string} [albumArtist] - The artist for the entire album. */
   albumArtist?: string;
+  /** @property {string} [album] - The album the track belongs to. */
   album?: string;
+  /** @property {number} [trackNumber] - The track number on the album. */
   trackNumber?: number;
+  /** @property {number} [discNumber] - The disc number for multi-disc albums. */
   discNumber?: number;
   
-  // Video-specific metadata
+  // --- Video-specific metadata ---
+  /** @property {string} [director] - The director of the movie or TV episode. */
   director?: string;
+  /** @property {string[]} [cast] - A list of main cast members. */
   cast?: string[];
+  /** @property {number} [runtime] - The runtime in minutes. */
   runtime?: number;
-  // TV Show specific
+  /** @property {number} [season] - The season number for a TV show episode. */
   season?: number;
+  /** @property {number} [episode] - The episode number for a TV show season. */
   episode?: number;
+  /** @property {string} [showTitle] - The title of the TV show. */
   showTitle?: string;
   
-  // Playback metadata
+  // --- Playback metadata ---
+  /** @property {number} [currentPosition] - The last playback position in seconds. */
   currentPosition?: number;
+  /** @property {'unwatched' | 'partial' | 'watched'} [watchedStatus] - The watch/read status of the item. */
   watchedStatus?: 'unwatched' | 'partial' | 'watched';
   
-  // File metadata
+  // --- File metadata ---
+  /** @property {Date} [lastModified] - The last modified date of the file. */
   lastModified?: Date;
+  /** @property {string} [fileHash] - A hash of the file content to detect duplicates. */
   fileHash?: string;
   
-  // External ratings and IDs
+  // --- External ratings and IDs ---
+  /** @property {string} [imdbRating] - Rating from IMDb (e.g., "8.8/10"). */
   imdbRating?: string;
+  /** @property {string} [rottenTomatoesRating] - Rating from Rotten Tomatoes (e.g., "94%"). */
   rottenTomatoesRating?: string;
+  /** @property {string} [metacriticRating] - Rating from Metacritic (e.g., "82/100"). */
   metacriticRating?: string;
+  /** @property {string} [imdbId] - The unique ID for the item on IMDb. */
   imdbId?: string;
 }
 
-// API Service Layer for External Metadata Fetching
+/**
+ * @interface APIResult
+ * @description Represents the standardized result from a metadata API call.
+ */
 interface APIResult {
+  /** @property {boolean} success - Indicates if the API call was successful. */
   success: boolean;
+  /** @property {Partial<MediaItem>} [data] - The fetched metadata, if successful. */
   data?: Partial<MediaItem>;
+  /** @property {string} [error] - An error message, if the call failed. */
   error?: string;
 }
 
+/**
+ * @class MetadataAPIService
+ * @description A static class that provides methods for fetching metadata from various external APIs.
+ * It acts as a service layer to abstract away the complexities of different API endpoints and data formats.
+ */
 class MetadataAPIService {
-  // OMDb API for movies with multiple ratings
+  /**
+   * Fetches movie metadata from the OMDb (Open Movie Database) API.
+   * @param {string} title - The title of the movie to search for.
+   * @param {number} [year] - The release year of the movie to narrow down the search.
+   * @param {string} [imdbId] - The IMDb ID of the movie for a direct lookup.
+   * @returns {Promise<APIResult>} A promise that resolves with the fetched metadata or an error.
+   */
   static async fetchOMDbMetadata(title: string, year?: number, imdbId?: string): Promise<APIResult> {
     try {
       const apiKey = 'a207177'; // OMDb API key
@@ -126,7 +190,12 @@ class MetadataAPIService {
     }
   }
 
-  // TMDB API for movies and TV shows
+  /**
+   * Fetches movie metadata from The Movie Database (TMDB) API.
+   * @param {string} title - The title of the movie to search for.
+   * @param {number} [year] - The release year of the movie to narrow down the search.
+   * @returns {Promise<APIResult>} A promise that resolves with the fetched metadata or an error.
+   */
   static async fetchMovieMetadata(title: string, year?: number): Promise<APIResult> {
     try {
       const apiKey = process.env.REACT_APP_TMDB_API_KEY || process.env.TMDB_API_KEY;
@@ -148,7 +217,7 @@ class MetadataAPIService {
             year: movie.release_date ? parseInt(movie.release_date.split('-')[0]) : undefined,
             rating: movie.vote_average ? Math.round(movie.vote_average / 2) : undefined,
             coverImage: movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : undefined,
-            genres: movie.genre_ids ? [] : undefined // We'd need to map genre IDs to names
+            genres: movie.genre_ids ? [] : undefined // Genre IDs would need a separate mapping call
           }
         };
       }
@@ -159,6 +228,12 @@ class MetadataAPIService {
     }
   }
 
+  /**
+   * Fetches TV show metadata from The Movie Database (TMDB) API.
+   * @param {string} title - The title of the TV show to search for.
+   * @param {number} [year] - The first air date year of the show to narrow down the search.
+   * @returns {Promise<APIResult>} A promise that resolves with the fetched metadata or an error.
+   */
   static async fetchTVMetadata(title: string, year?: number): Promise<APIResult> {
     try {
       const apiKey = process.env.REACT_APP_TMDB_API_KEY || process.env.TMDB_API_KEY;
@@ -191,7 +266,12 @@ class MetadataAPIService {
     }
   }
 
-  // Open Library API for books
+  /**
+   * Fetches book metadata from the Open Library API.
+   * @param {string} title - The title of the book to search for.
+   * @param {string} [author] - The author of the book to narrow down the search.
+   * @returns {Promise<APIResult>} A promise that resolves with the fetched metadata or an error.
+   */
   static async fetchBookMetadata(title: string, author?: string): Promise<APIResult> {
     try {
       let searchQuery = `title:${encodeURIComponent(title)}`;
@@ -226,7 +306,12 @@ class MetadataAPIService {
     }
   }
 
-  // MusicBrainz API for music
+  /**
+   * Fetches music metadata from the MusicBrainz API.
+   * @param {string} artist - The artist of the music release.
+   * @param {string} [album] - The album title to search for.
+   * @returns {Promise<APIResult>} A promise that resolves with the fetched metadata or an error.
+   */
   static async fetchMusicMetadata(artist: string, album?: string): Promise<APIResult> {
     try {
       let searchQuery = `artist:${encodeURIComponent(artist)}`;
@@ -237,7 +322,7 @@ class MetadataAPIService {
       const searchUrl = `https://musicbrainz.org/ws/2/release?query=${searchQuery}&fmt=json&limit=5`;
       const response = await fetch(searchUrl, {
         headers: {
-          'User-Agent': 'UniversalMediaLibrary/1.0 (contact@example.com)'
+          'User-Agent': 'UniversalMediaLibrary/1.0 (contact@example.com)' // MusicBrainz API requires a User-Agent
         }
       });
       const data = await response.json();
@@ -261,11 +346,16 @@ class MetadataAPIService {
     }
   }
 
-  // Enhanced metadata merger for combining multiple API sources
+  /**
+   * Merges metadata from two different sources (TMDB and OMDb).
+   * It prioritizes data from TMDB for quality but fills in gaps with OMDb data.
+   * @param {Partial<MediaItem>} [tmdbData] - Metadata from TMDB.
+   * @param {Partial<MediaItem>} [omdbData] - Metadata from OMDb.
+   * @returns {Partial<MediaItem>} The merged metadata object.
+   */
   static mergeMetadata(tmdbData?: Partial<MediaItem>, omdbData?: Partial<MediaItem>): Partial<MediaItem> {
     const merged: Partial<MediaItem> = {};
     
-    // Combine data, preferring more complete information
     if (tmdbData?.title || omdbData?.title) {
       merged.title = tmdbData?.title || omdbData?.title;
     }
@@ -277,29 +367,19 @@ class MetadataAPIService {
       merged.summary = tmdbData?.summary || omdbData?.summary;
     }
     
-    // Use TMDB year if available, otherwise OMDb
     merged.year = tmdbData?.year || omdbData?.year;
-    
-    // Prefer TMDB images (higher quality)
-    merged.coverImage = tmdbData?.coverImage || omdbData?.coverImage;
-    
-    // Director information
+    merged.coverImage = tmdbData?.coverImage || omdbData?.coverImage; // Prefer TMDB images
     merged.director = tmdbData?.director || omdbData?.director;
-    
-    // Cast - prefer TMDB's more complete cast list
     merged.cast = tmdbData?.cast || omdbData?.cast;
-    
-    // Runtime
     merged.runtime = tmdbData?.runtime || omdbData?.runtime;
     
-    // Genres - combine and deduplicate
+    // Combine and deduplicate genres
     if (tmdbData?.genres || omdbData?.genres) {
       const allGenres = [...(tmdbData?.genres || []), ...(omdbData?.genres || [])];
       merged.genres = Array.from(new Set(allGenres));
     }
     
-    // Rating - prefer TMDB's 5-star system, but include OMDb ratings as additional data
-    merged.rating = tmdbData?.rating;
+    merged.rating = tmdbData?.rating; // Prefer TMDB's 5-star system
     
     // Add OMDb-specific rating data
     if (omdbData?.imdbRating) merged.imdbRating = omdbData.imdbRating;
@@ -310,10 +390,14 @@ class MetadataAPIService {
     return merged;
   }
 
-  // Enhanced dual-API movie fetcher
+  /**
+   * Fetches and merges movie metadata from both TMDB and OMDb for the most complete result.
+   * @param {string} title - The title of the movie.
+   * @param {number} [year] - The release year of the movie.
+   * @returns {Promise<APIResult>} A promise that resolves with the merged metadata.
+   */
   static async fetchEnhancedMovieMetadata(title: string, year?: number): Promise<APIResult> {
     try {
-      // Fetch from both APIs simultaneously
       const [tmdbResult, omdbResult] = await Promise.allSettled([
         this.fetchMovieMetadata(title, year),
         this.fetchOMDbMetadata(title, year)
@@ -323,21 +407,18 @@ class MetadataAPIService {
       let omdbData: Partial<MediaItem> | undefined;
       const errors: string[] = [];
       
-      // Process TMDB result
       if (tmdbResult.status === 'fulfilled' && tmdbResult.value.success) {
         tmdbData = tmdbResult.value.data;
       } else if (tmdbResult.status === 'fulfilled') {
         errors.push(`TMDB: ${tmdbResult.value.error}`);
       }
       
-      // Process OMDb result
       if (omdbResult.status === 'fulfilled' && omdbResult.value.success) {
         omdbData = omdbResult.value.data;
       } else if (omdbResult.status === 'fulfilled') {
         errors.push(`OMDb: ${omdbResult.value.error}`);
       }
       
-      // If we have data from at least one source, merge and return
       if (tmdbData || omdbData) {
         const mergedData = this.mergeMetadata(tmdbData, omdbData);
         return {
@@ -346,7 +427,6 @@ class MetadataAPIService {
         };
       }
       
-      // If both failed, return combined error
       return {
         success: false,
         error: errors.length > 0 ? errors.join('; ') : 'Failed to fetch movie data from all sources'
@@ -356,7 +436,16 @@ class MetadataAPIService {
     }
   }
 
-  // Generic metadata fetcher with enhanced movie support
+  /**
+   * A generic metadata fetcher that routes to the appropriate specific fetcher based on media type.
+   * @param {string} mediaType - The type of media to fetch metadata for.
+   * @param {string} title - The title of the media.
+   * @param {object} [additionalInfo] - Extra information to refine the search.
+   * @param {number} [additionalInfo.year] - The release year.
+   * @param {string} [additionalInfo.artist] - The artist's name.
+   * @param {string} [additionalInfo.author] - The author's name.
+   * @returns {Promise<APIResult>} A promise that resolves with the fetched metadata.
+   */
   static async fetchMetadata(mediaType: string, title: string, additionalInfo?: { year?: number; artist?: string; author?: string }): Promise<APIResult> {
     switch (mediaType) {
       case 'movie':
@@ -374,57 +463,40 @@ class MetadataAPIService {
   }
 }
 
-// MediaItem interface already defined above for API service
-
-// File type detection utility
+/**
+ * Detects the type of media based on the file's extension and MIME type.
+ * @param {string} filename - The name of the file.
+ * @param {string} mimeType - The MIME type of the file.
+ * @returns {MediaItem['mediaType']} The detected media type category.
+ */
 const detectMediaType = (filename: string, mimeType: string): 'book' | 'comic' | 'pdf' | 'music' | 'movie' | 'tv' | 'image' | 'other' => {
   const ext = filename.toLowerCase().split('.').pop() || '';
   const lowerFilename = filename.toLowerCase();
   
-  // Book formats
-  if (['epub', 'mobi', 'azw', 'azw3', 'fb2', 'lit', 'pdb', 'txt'].includes(ext)) {
-    return 'book';
-  }
+  if (['epub', 'mobi', 'azw', 'azw3', 'fb2', 'lit', 'pdb', 'txt'].includes(ext)) return 'book';
+  if (['cbz', 'cbr', 'cbt', 'cb7'].includes(ext)) return 'comic';
+  if (ext === 'pdf') return 'pdf';
+  if (['mp3', 'wav', 'flac', 'aac', 'm4a', 'ogg', 'wma'].includes(ext) || mimeType.startsWith('audio/')) return 'music';
   
-  // Comic formats
-  if (['cbz', 'cbr', 'cbt', 'cb7'].includes(ext)) {
-    return 'comic';
-  }
-  
-  // PDF
-  if (ext === 'pdf') {
-    return 'pdf';
-  }
-  
-  // Music
-  if (['mp3', 'wav', 'flac', 'aac', 'm4a', 'ogg', 'wma'].includes(ext) || mimeType.startsWith('audio/')) {
-    return 'music';
-  }
-  
-  // TV Shows (detect by common TV naming patterns)
   if (['mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv', 'webm'].includes(ext) || mimeType.startsWith('video/')) {
-    // Check for TV show patterns: S01E01, Season 1, Episode 1, etc.
-    const tvPatterns = [
-      /s\d+e\d+/i, // S01E01
-      /season\s*\d+.*episode\s*\d+/i, // Season 1 Episode 1
-      /\d+x\d+/i, // 1x01
-    ];
-    
+    // Check for TV show patterns like S01E01, 1x01, etc.
+    const tvPatterns = [/s\d+e\d+/i, /season\s*\d+.*episode\s*\d+/i, /\d+x\d+/i];
     if (tvPatterns.some(pattern => pattern.test(lowerFilename))) {
       return 'tv';
     }
     return 'movie';
   }
   
-  // Image
-  if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp'].includes(ext) || mimeType.startsWith('image/')) {
-    return 'image';
-  }
+  if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp'].includes(ext) || mimeType.startsWith('image/')) return 'image';
   
   return 'other';
 };
 
-// Get icon for media type
+/**
+ * Returns an emoji icon representing the media type.
+ * @param {string} mediaType - The media type category.
+ * @returns {string} An emoji character.
+ */
 const getMediaIcon = (mediaType: string) => {
   switch (mediaType) {
     case 'book': return '📚';
@@ -438,7 +510,11 @@ const getMediaIcon = (mediaType: string) => {
   }
 };
 
-// Get media type display name
+/**
+ * Returns a user-friendly display name for a media type.
+ * @param {string} mediaType - The media type category.
+ * @returns {string} The display name (e.g., "TV Shows").
+ */
 const getMediaTypeDisplayName = (mediaType: string) => {
   switch (mediaType) {
     case 'book': return 'Books';
@@ -452,6 +528,11 @@ const getMediaTypeDisplayName = (mediaType: string) => {
   }
 };
 
+/**
+ * The main application component. It orchestrates the entire UI, manages state,
+ * and handles all user interactions.
+ * @returns {JSX.Element} The rendered App component.
+ */
 function App() {
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -459,11 +540,9 @@ function App() {
   const [selectedItem, setSelectedItem] = useState<MediaItem | null>(null);
   const [showViewer, setShowViewer] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
-  
-  // Navigation state
   const [currentView, setCurrentView] = useState<'home' | 'music' | 'movies' | 'tv' | 'books' | 'comics' | 'documents' | 'photos'>('home');
 
-  // Load media items from localStorage on startup
+  // Load media items from localStorage on initial component mount.
   useEffect(() => {
     const stored = localStorage.getItem('mediaItems');
     if (stored) {
@@ -476,15 +555,20 @@ function App() {
     }
   }, []);
 
-  // Save media items to localStorage
+  // Save media items to localStorage whenever the `mediaItems` state changes.
   useEffect(() => {
     localStorage.setItem('mediaItems', JSON.stringify(mediaItems));
   }, [mediaItems]);
 
-  // Extract enhanced metadata from file
+  /**
+   * Extracts basic metadata from a file based on its name and type.
+   * @param {File} file - The file to process.
+   * @param {MediaItem['mediaType']} mediaType - The determined media type of the file.
+   * @returns {Promise<Partial<MediaItem>>} A promise that resolves with the extracted metadata.
+   */
   const extractMetadata = async (file: File, mediaType: MediaItem['mediaType']): Promise<Partial<MediaItem>> => {
     const metadata: Partial<MediaItem> = {
-      title: file.name.replace(/\.[^/.]+$/, ''), // Remove extension
+      title: file.name.replace(/\.[^/.]+$/, ''), // Basic title from filename
       lastModified: new Date(file.lastModified),
       watchedStatus: 'unwatched'
     };
@@ -492,81 +576,41 @@ function App() {
     const filename = file.name.toLowerCase();
     const autoTags: string[] = [];
 
-    // Enhanced metadata extraction based on media type
     if (mediaType === 'music') {
-      // Extract music metadata from filename patterns
-      const patterns = {
-        artist: /^(.+?) - .+/,
-        album: /\[(.+?)\]/,
-        trackNumber: /^\d+\./
-      };
-      
-      const artistMatch = filename.match(patterns.artist);
+      const artistMatch = filename.match(/^(.+?) - .+/)
       if (artistMatch) metadata.artist = artistMatch[1];
-      
-      const albumMatch = filename.match(patterns.album);
+      const albumMatch = filename.match(/\[(.+?)\]/);
       if (albumMatch) metadata.album = albumMatch[1];
-      
-      // Auto-detect music genres
-      if (filename.includes('rock')) autoTags.push('Rock');
-      if (filename.includes('pop')) autoTags.push('Pop');
-      if (filename.includes('jazz')) autoTags.push('Jazz');
-      if (filename.includes('classical')) autoTags.push('Classical');
-      if (filename.includes('electronic')) autoTags.push('Electronic');
-    }
-    
-    else if (mediaType === 'movie' || mediaType === 'tv') {
-      // Extract video metadata from filename
+    } else if (mediaType === 'movie' || mediaType === 'tv') {
       const yearMatch = filename.match(/\((\d{4})\)/);
       if (yearMatch) metadata.year = parseInt(yearMatch[1]);
-      
       if (mediaType === 'tv') {
-        // Extract season/episode info
         const seasonMatch = filename.match(/s(\d+)e(\d+)/i);
         if (seasonMatch) {
           metadata.season = parseInt(seasonMatch[1]);
           metadata.episode = parseInt(seasonMatch[2]);
         }
-        
-        // Extract show title (everything before season info)
         const showMatch = filename.match(/^(.+?)(?:\s*s\d+e\d+)/i);
         if (showMatch) metadata.showTitle = showMatch[1].replace(/\./g, ' ').trim();
       }
-      
-      // Auto-detect video genres
-      if (filename.includes('action')) autoTags.push('Action');
-      if (filename.includes('comedy')) autoTags.push('Comedy');
-      if (filename.includes('drama')) autoTags.push('Drama');
-      if (filename.includes('horror')) autoTags.push('Horror');
-      if (filename.includes('sci-fi') || filename.includes('science fiction')) autoTags.push('Science Fiction');
-    }
-    
-    else if (mediaType === 'book') {
-      // Auto-detect book genres
-      if (filename.includes('sci-fi') || filename.includes('science fiction')) autoTags.push('Science Fiction');
-      if (filename.includes('fantasy')) autoTags.push('Fantasy');
-      if (filename.includes('mystery')) autoTags.push('Mystery');
-      if (filename.includes('romance')) autoTags.push('Romance');
-      if (filename.includes('horror')) autoTags.push('Horror');
-      if (filename.includes('non-fiction')) autoTags.push('Non-Fiction');
     }
 
-    if (autoTags.length > 0) {
-      metadata.genres = autoTags;
-    }
+    if (autoTags.length > 0) metadata.genres = autoTags;
 
     return metadata;
   };
 
+  /**
+   * Handles the processing of files uploaded by the user.
+   * @param {FileList | null} files - The list of files from a file input or drop event.
+   */
   const handleFileUpload = async (files: FileList | null) => {
     if (!files) return;
 
     const newItems: MediaItem[] = [];
-
     for (const file of Array.from(files)) {
       const mediaType = detectMediaType(file.name, file.type);
       const basicMetadata = await extractMetadata(file, mediaType);
-
       const newItem: MediaItem = {
         id: Math.random().toString(36).substr(2, 9),
         name: file.name,
@@ -581,30 +625,46 @@ function App() {
         file,
         ...basicMetadata
       };
-
       newItems.push(newItem);
     }
-
     setMediaItems(prev => [...prev, ...newItems]);
   };
 
+  /**
+   * Handles the drop event for drag-and-drop file uploads.
+   * @param {React.DragEvent} e - The drag event.
+   */
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     handleFileUpload(e.dataTransfer.files);
   };
 
+  /**
+   * Updates a specific media item in the state.
+   * @param {string} itemId - The ID of the item to update.
+   * @param {Partial<MediaItem>} updates - An object containing the fields to update.
+   */
   const updateItem = (itemId: string, updates: Partial<MediaItem>) => {
     setMediaItems(prev => prev.map(item => 
       item.id === itemId ? { ...item, ...updates } : item
     ));
   };
 
+  /**
+   * Removes a media item from the state.
+   * @param {string} itemId - The ID of the item to remove.
+   */
   const removeItem = (itemId: string) => {
     setMediaItems(prev => prev.filter(item => item.id !== itemId));
   };
 
-  // Filter items by media type and search
+  /**
+   * Filters the list of media items based on the current search term and selected media types.
+   * @param {MediaItem['mediaType'][]} mediaTypes - An array of media types to include.
+   * @param {number} [limit] - An optional limit on the number of items to return.
+   * @returns {MediaItem[]} The filtered and sorted list of media items.
+   */
   const getFilteredItems = (mediaTypes: MediaItem['mediaType'][], limit?: number) => {
     return mediaItems
       .filter(item => {
@@ -619,23 +679,27 @@ function App() {
       .slice(0, limit);
   };
 
-  // Get recently added items (last 10)
   const recentItems = mediaItems
     .sort((a, b) => b.dateAdded.getTime() - a.dateAdded.getTime())
     .slice(0, 10);
 
-  // Get continue watching/reading items (items with partial progress)
   const continueItems = mediaItems
     .filter(item => item.watchedStatus === 'partial')
     .sort((a, b) => b.dateAdded.getTime() - a.dateAdded.getTime())
     .slice(0, 6);
 
-  // Get media type counts for library overview
   const libraryStats = mediaItems.reduce((acc, item) => {
     acc[item.mediaType] = (acc[item.mediaType] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
 
+  /**
+   * Renders a horizontal section of media cards for the dashboard.
+   * @param {string} title - The title of the section (e.g., "Recently Added").
+   * @param {MediaItem[]} items - The items to display in the section.
+   * @param {() => void} [viewAllAction] - An optional function for a "View All" button.
+   * @returns {JSX.Element | null} The rendered section or null if there are no items.
+   */
   const renderLibrarySection = (title: string, items: MediaItem[], viewAllAction?: () => void) => {
     if (items.length === 0) return null;
     
@@ -696,9 +760,12 @@ function App() {
     );
   };
 
+  /**
+   * Renders the main home dashboard view.
+   * @returns {JSX.Element} The home dashboard component.
+   */
   const renderHomeDashboard = () => (
     <div className="dashboard">
-      {/* Library Overview */}
       <div className="library-overview">
         <h2>Your Library</h2>
         <div className="library-grid">
@@ -720,46 +787,20 @@ function App() {
         </div>
       </div>
 
-      {/* Recently Added */}
-      {renderLibrarySection(
-        'Recently Added', 
-        recentItems,
-        () => console.log('View all recent')
-      )}
-
-      {/* Continue Watching/Reading */}
-      {renderLibrarySection(
-        'Continue Watching', 
-        continueItems
-      )}
-
-      {/* Quick access sections */}
-      {renderLibrarySection(
-        'Movies', 
-        getFilteredItems(['movie'], 6),
-        () => setCurrentView('movies')
-      )}
-
-      {renderLibrarySection(
-        'TV Shows', 
-        getFilteredItems(['tv'], 6),
-        () => setCurrentView('tv')
-      )}
-
-      {renderLibrarySection(
-        'Music', 
-        getFilteredItems(['music'], 6),
-        () => setCurrentView('music')
-      )}
-
-      {renderLibrarySection(
-        'Books', 
-        getFilteredItems(['book'], 6),
-        () => setCurrentView('books')
-      )}
+      {renderLibrarySection('Recently Added', recentItems)}
+      {renderLibrarySection('Continue Watching', continueItems)}
+      {renderLibrarySection('Movies', getFilteredItems(['movie'], 6), () => setCurrentView('movies'))}
+      {renderLibrarySection('TV Shows', getFilteredItems(['tv'], 6), () => setCurrentView('tv'))}
+      {renderLibrarySection('Music', getFilteredItems(['music'], 6), () => setCurrentView('music'))}
+      {renderLibrarySection('Books', getFilteredItems(['book'], 6), () => setCurrentView('books'))}
     </div>
   );
 
+  /**
+   * Renders a grid view for a specific set of media types.
+   * @param {MediaItem['mediaType'][]} mediaTypes - The media types to display.
+   * @returns {JSX.Element} The media type grid view component.
+   */
   const renderMediaTypeView = (mediaTypes: MediaItem['mediaType'][]) => {
     const filteredItems = getFilteredItems(mediaTypes);
     
@@ -945,15 +986,32 @@ function App() {
   );
 }
 
-// Enhanced Media Card Component
+/**
+ * @interface MediaCardProps
+ * @description Props for the MediaCard component.
+ */
 interface MediaCardProps {
+  /** @property {MediaItem} item - The media item to display. */
   item: MediaItem;
+  /** @property {() => void} onEdit - Callback function to trigger the editor modal. */
   onEdit: () => void;
+  /** @property {() => void} onView - Callback function to trigger the viewer modal. */
   onView: () => void;
+  /** @property {(id: string) => void} onRemove - Callback function to remove the item. */
   onRemove: (id: string) => void;
 }
 
+/**
+ * A detailed card component for displaying a single media item in a grid view.
+ * @param {MediaCardProps} props - The component props.
+ * @returns {JSX.Element} The rendered MediaCard component.
+ */
 function MediaCard({ item, onEdit, onView, onRemove }: MediaCardProps) {
+  /**
+   * Formats file size in bytes to a readable string (KB, MB, GB).
+   * @param {number} bytes - The file size in bytes.
+   * @returns {string} The formatted file size.
+   */
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -962,38 +1020,17 @@ function MediaCard({ item, onEdit, onView, onRemove }: MediaCardProps) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
+  /**
+   * Gets the primary and secondary display info based on media type.
+   * @returns {{primary: string, secondary: string, tertiary: string}} An object with display strings.
+   */
   const getDisplayInfo = () => {
     switch (item.mediaType) {
-      case 'music':
-        return {
-          primary: item.title || item.name,
-          secondary: item.artist || 'Unknown Artist',
-          tertiary: item.album || ''
-        };
-      case 'movie':
-        return {
-          primary: item.title || item.name,
-          secondary: item.year ? `(${item.year})` : '',
-          tertiary: item.director || ''
-        };
-      case 'tv':
-        return {
-          primary: item.showTitle || item.title || item.name,
-          secondary: item.season && item.episode ? `S${item.season}E${item.episode}` : '',
-          tertiary: item.director || ''
-        };
-      case 'book':
-        return {
-          primary: item.title || item.name,
-          secondary: item.authors ? item.authors.join(', ') : '',
-          tertiary: item.series || ''
-        };
-      default:
-        return {
-          primary: item.title || item.name,
-          secondary: '',
-          tertiary: ''
-        };
+      case 'music': return { primary: item.title || item.name, secondary: item.artist || 'Unknown Artist', tertiary: item.album || '' };
+      case 'movie': return { primary: item.title || item.name, secondary: item.year ? `(${item.year})` : '', tertiary: item.director || '' };
+      case 'tv': return { primary: item.showTitle || item.title || item.name, secondary: item.season && item.episode ? `S${item.season}E${item.episode}` : '', tertiary: item.director || '' };
+      case 'book': return { primary: item.title || item.name, secondary: item.authors ? item.authors.join(', ') : '', tertiary: item.series || '' };
+      default: return { primary: item.title || item.name, secondary: '', tertiary: '' };
     }
   };
 
@@ -1050,16 +1087,30 @@ function MediaCard({ item, onEdit, onView, onRemove }: MediaCardProps) {
   );
 }
 
-// Media Viewer Component (keeping the existing one)
+/**
+ * @interface MediaViewerProps
+ * @description Props for the MediaViewer component.
+ */
 interface MediaViewerProps {
+  /** @property {MediaItem} item - The media item to be viewed. */
   item: MediaItem;
+  /** @property {() => void} onClose - Callback function to close the viewer modal. */
   onClose: () => void;
 }
 
+/**
+ * A modal component for viewing different types of media content.
+ * @param {MediaViewerProps} props - The component props.
+ * @returns {JSX.Element} The rendered MediaViewer modal.
+ */
 function MediaViewer({ item, onClose }: MediaViewerProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [numPages, setNumPages] = useState<number | null>(null);
 
+  /**
+   * Renders the appropriate viewer based on the item's media type.
+   * @returns {JSX.Element} The viewer element for the specific media type.
+   */
   const renderViewer = () => {
     if (!item.file) {
       return <div className="viewer-error">File not available for viewing</div>;
@@ -1164,13 +1215,25 @@ function MediaViewer({ item, onClose }: MediaViewerProps) {
   );
 }
 
-// Metadata Editor Component (keeping the existing one with updates)
+/**
+ * @interface MetadataEditorProps
+ * @description Props for the MetadataEditor component.
+ */
 interface MetadataEditorProps {
+  /** @property {MediaItem} item - The media item to be edited. */
   item: MediaItem;
+  /** @property {(updates: Partial<MediaItem>) => void} onSave - Callback to save the updated metadata. */
   onSave: (updates: Partial<MediaItem>) => void;
+  /** @property {() => void} onClose - Callback to close the editor modal. */
   onClose: () => void;
 }
 
+/**
+ * A sophisticated modal component for editing all metadata fields of a media item.
+ * Includes features like tabbed layout, validation, and fetching data from online APIs.
+ * @param {MetadataEditorProps} props - The component props.
+ * @returns {JSX.Element} The rendered MetadataEditor modal.
+ */
 function MetadataEditor({ item, onSave, onClose }: MetadataEditorProps) {
   const [formData, setFormData] = useState<Partial<MediaItem>>({
     title: item.title || item.name,
@@ -1195,32 +1258,32 @@ function MetadataEditor({ item, onSave, onClose }: MetadataEditorProps) {
   const [newAuthor, setNewAuthor] = useState('');
   const [newTag, setNewTag] = useState('');
   const [coverPreview, setCoverPreview] = useState(item.coverImage || '');
-  
-  // Tab and validation state
   const [activeTab, setActiveTab] = useState<'basic' | 'media' | 'organization'>('basic');
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
-  
-  // API loading and feedback state
   const [isLoadingAPI, setIsLoadingAPI] = useState(false);
   const [apiMessage, setApiMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
 
+  /**
+   * Handles form submission, including validation.
+   * @param {React.FormEvent} e - The form event.
+   */
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Validate all fields before saving
     const errors = validateForm(formData, item.mediaType);
     if (Object.keys(errors).length > 0) {
       setValidationErrors(errors);
-      // Switch to the tab with the first error
       if (errors.title || errors.year || errors.summary) setActiveTab('basic');
       else if (errors.artist || errors.director || errors.season) setActiveTab('media');
       else setActiveTab('organization');
       return;
     }
-    
     onSave({...formData, coverImage: coverPreview});
   };
 
+  /**
+   * Handles changes to the cover image file input.
+   * @param {React.ChangeEvent<HTMLInputElement>} e - The change event.
+   */
   const handleCoverImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && file.type.startsWith('image/')) {
@@ -1234,38 +1297,29 @@ function MetadataEditor({ item, onSave, onClose }: MetadataEditorProps) {
     }
   };
 
-  // Validation function
+  /**
+   * Validates the form data before submission.
+   * @param {Partial<MediaItem>} data - The form data to validate.
+   * @param {string} mediaType - The media type of the item being edited.
+   * @returns {Record<string, string>} An object of validation errors.
+   */
   const validateForm = (data: Partial<MediaItem>, mediaType: string): Record<string, string> => {
     const errors: Record<string, string> = {};
-    
-    if (!data.title?.trim()) {
-      errors.title = 'Title is required';
-    }
-    
-    if (data.year && (data.year < 1000 || data.year > new Date().getFullYear() + 10)) {
-      errors.year = 'Please enter a valid year';
-    }
-    
-    if (mediaType === 'book' && data.authors && data.authors.length === 0) {
-      errors.authors = 'At least one author is recommended for books';
-    }
-    
-    if (mediaType === 'music' && !data.artist?.trim()) {
-      errors.artist = 'Artist is recommended for music';
-    }
-    
-    if ((mediaType === 'movie' || mediaType === 'tv') && !data.director?.trim()) {
-      errors.director = 'Director is recommended for videos';
-    }
-    
+    if (!data.title?.trim()) errors.title = 'Title is required';
+    if (data.year && (data.year < 1000 || data.year > new Date().getFullYear() + 10)) errors.year = 'Please enter a valid year';
+    if (mediaType === 'book' && data.authors && data.authors.length === 0) errors.authors = 'At least one author is recommended for books';
+    if (mediaType === 'music' && !data.artist?.trim()) errors.artist = 'Artist is recommended for music';
+    if ((mediaType === 'movie' || mediaType === 'tv') && !data.director?.trim()) errors.director = 'Director is recommended for videos';
     return errors;
   };
 
-  // Handle field changes with validation
+  /**
+   * Handles changes to any form field and clears validation errors for that field.
+   * @param {string} field - The name of the field being changed.
+   * @param {any} value - The new value of the field.
+   */
   const handleFieldChange = (field: string, value: any) => {
     setFormData({ ...formData, [field]: value });
-    
-    // Clear validation error when field is corrected
     if (validationErrors[field]) {
       const newErrors = { ...validationErrors };
       delete newErrors[field];
@@ -1273,77 +1327,54 @@ function MetadataEditor({ item, onSave, onClose }: MetadataEditorProps) {
     }
   };
 
-  // Calculate completion percentage
+  /**
+   * Calculates the completion percentage of the metadata form.
+   * @returns {number} The completion percentage.
+   */
   const calculateCompletion = (): number => {
     const requiredFields = ['title', 'summary'];
     const mediaSpecificFields = {
-      book: ['authors', 'publisher'],
-      music: ['artist', 'album'],
-      movie: ['director', 'year'],
-      tv: ['director', 'season', 'episode'],
-      comic: ['authors', 'series'],
-      pdf: ['title', 'summary']
+      book: ['authors', 'publisher'], music: ['artist', 'album'],
+      movie: ['director', 'year'], tv: ['director', 'season', 'episode'],
+      comic: ['authors', 'series'], pdf: ['title', 'summary']
     };
-    
     const allFields = [...requiredFields, ...(mediaSpecificFields[item.mediaType as keyof typeof mediaSpecificFields] || [])];
     const completed = allFields.filter(field => {
       const value = formData[field as keyof MediaItem];
       return value && (Array.isArray(value) ? value.length > 0 : String(value).trim() !== '');
     }).length;
-    
     return Math.round((completed / allFields.length) * 100);
   };
 
-  // Auto-Fill functionality
+  /** Fetches metadata from external APIs and merges it into the form. */
   const handleAutoFill = async () => {
     if (!formData.title) {
       setApiMessage({ type: 'error', text: 'Please enter a title first to search for metadata.' });
       setTimeout(() => setApiMessage(null), 5000);
       return;
     }
-
     setIsLoadingAPI(true);
     setApiMessage(null);
-
     try {
-      const additionalInfo: { year?: number; artist?: string; author?: string } = {};
-      
-      if (formData.year) additionalInfo.year = formData.year;
-      if (formData.artist) additionalInfo.artist = formData.artist;
-      if (formData.authors && formData.authors.length > 0) additionalInfo.author = formData.authors[0];
-
+      const additionalInfo = { year: formData.year, artist: formData.artist, author: formData.authors?.[0] };
       const result = await MetadataAPIService.fetchMetadata(item.mediaType, formData.title, additionalInfo);
-      
       if (result.success && result.data) {
-        // Merge API data with existing form data, preserving user's existing data
         const mergedData = { ...formData };
         Object.keys(result.data).forEach(key => {
           const typedKey = key as keyof MediaItem;
           if (result.data![typedKey] !== undefined && result.data![typedKey] !== null) {
-            // Only overwrite if the current field is empty
-            if (!mergedData[typedKey] || 
-                (Array.isArray(mergedData[typedKey]) && (mergedData[typedKey] as any[]).length === 0) ||
-                String(mergedData[typedKey]).trim() === '') {
+            if (!mergedData[typedKey] || (Array.isArray(mergedData[typedKey]) && (mergedData[typedKey] as any[]).length === 0) || String(mergedData[typedKey]).trim() === '') {
               (mergedData as any)[typedKey] = result.data![typedKey];
             }
           }
         });
-        
         setFormData(mergedData);
-        if (result.data.coverImage) {
-          setCoverPreview(result.data.coverImage);
-        }
-        
-        // Show detailed success message with sources
+        if (result.data.coverImage) setCoverPreview(result.data.coverImage);
         let sources = [];
         if (result.data.imdbRating || result.data.rottenTomatoesRating) sources.push('OMDb');
         if (result.data.coverImage?.includes('tmdb')) sources.push('TMDB');
         if (sources.length === 0) sources.push('External APIs');
-        
-        setApiMessage({ 
-          type: 'success', 
-          text: `Metadata successfully fetched from ${sources.join(' + ')}!` 
-        });
+        setApiMessage({ type: 'success', text: `Metadata successfully fetched from ${sources.join(' + ')}!` });
         setTimeout(() => setApiMessage(null), 5000);
       } else {
         setApiMessage({ type: 'error', text: result.error || 'Failed to fetch metadata' });
@@ -1357,47 +1388,45 @@ function MetadataEditor({ item, onSave, onClose }: MetadataEditorProps) {
     }
   };
 
+  /** Adds a new author to the form data. */
   const addAuthor = () => {
     if (newAuthor.trim()) {
-      setFormData(prev => ({
-        ...prev,
-        authors: [...(prev.authors || []), newAuthor.trim()]
-      }));
+      setFormData(prev => ({ ...prev, authors: [...(prev.authors || []), newAuthor.trim()] }));
       setNewAuthor('');
     }
   };
 
+  /**
+   * Removes an author from the form data by index.
+   * @param {number} index - The index of the author to remove.
+   */
   const removeAuthor = (index: number) => {
-    setFormData(prev => ({
-      ...prev,
-      authors: (prev.authors || []).filter((_, i) => i !== index)
-    }));
+    setFormData(prev => ({ ...prev, authors: (prev.authors || []).filter((_, i) => i !== index) }));
   };
 
+  /** Adds a new tag to the form data. */
   const addTag = () => {
     if (newTag.trim()) {
-      setFormData(prev => ({
-        ...prev,
-        tags: [...(prev.tags || []), newTag.trim()]
-      }));
+      setFormData(prev => ({ ...prev, tags: [...(prev.tags || []), newTag.trim()] }));
       setNewTag('');
     }
   };
 
+  /**
+   * Removes a tag from the form data by index.
+   * @param {number} index - The index of the tag to remove.
+   */
   const removeTag = (index: number) => {
-    setFormData(prev => ({
-      ...prev,
-      tags: (prev.tags || []).filter((_, i) => i !== index)
-    }));
+    setFormData(prev => ({ ...prev, tags: (prev.tags || []).filter((_, i) => i !== index) }));
   };
 
-  // Floating Input Component
+  /**
+   * A reusable input component with a floating label.
+   * @param {{label: string, field: string, type?: string, required?: boolean, multiline?: boolean}} props - The component props.
+   * @returns {JSX.Element} The rendered input component.
+   */
   const FloatingInput = ({ label, field, type = "text", required = false, multiline = false }: {
-    label: string;
-    field: string;
-    type?: string;
-    required?: boolean;
-    multiline?: boolean;
+    label: string; field: string; type?: string; required?: boolean; multiline?: boolean;
   }) => {
     const value = formData[field as keyof MediaItem] || '';
     const hasError = validationErrors[field];
